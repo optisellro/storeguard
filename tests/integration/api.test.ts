@@ -186,8 +186,11 @@ describe("API, persistență și coadă", () => {
           payload: { url: "https://example.com/produs" },
         })
       ).json().id;
-      for (let i = 0; i < 50 && !previewPath; i++)
+      // Wait until the job has written the preview and flagged it on the scan.
+      for (let i = 0; i < 200; i++) {
+        if ((await app.inject(`/api/scans/${id}`)).json().preview) break;
         await new Promise((r) => setTimeout(r, 10));
+      }
       const running = (await app.inject(`/api/scans/${id}`)).json();
       expect(running.state).toBe("RUNNING");
       expect(running.phase).toBe("OBSERVING");
@@ -208,8 +211,19 @@ describe("API, persistență și coadă", () => {
       expect((await app.inject(`/api/scans/${id}/preview`)).statusCode).toBe(
         404,
       );
+      for (let i = 0; i < 100; i++) {
+        if (
+          !(await stat(previewPath).then(
+            () => true,
+            () => false,
+          ))
+        )
+          break;
+        await new Promise((r) => setTimeout(r, 10));
+      }
       await expect(stat(previewPath)).rejects.toThrow();
     } finally {
+      release();
       await app.close();
       await rm(dir, { recursive: true, force: true });
     }
