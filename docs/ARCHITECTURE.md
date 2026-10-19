@@ -2,13 +2,13 @@
 
 ## Componente
 
-| Director                    | Responsabilitate                                                                                    |
-| --------------------------- | --------------------------------------------------------------------------------------------------- |
-| `apps/web`                  | React + Vite + Tailwind CSS; checkbox accesibil Radix; dashboard, formular, raport, istoric, setări |
-| `apps/api`                  | Fastify, API localhost, coadă în memorie, persistență SQLite și migrare Umzug                       |
-| `packages/contracts`        | Contracte TypeScript, validare Zod, setări, redactarea URL-urilor                                   |
-| `packages/pdp-availability` | Motor autonom Playwright, rețea verificată, observații vizuale și reguli pure                       |
-| `tests/fixtures`            | Server controlat pentru teste; nu este un backend de rezultate demonstrative                        |
+| Director                    | Responsabilitate                                                                                                                                     |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/web`                  | React + Vite; shell modular (`app/navigation.ts`), pagini, componente, grafice SVG, traducerea rezultatelor în limbajul clientului (`lib/report.ts`) |
+| `apps/api`                  | Fastify, API localhost, coadă în memorie, persistență SQLite și migrare Umzug                                                                        |
+| `packages/contracts`        | Contracte TypeScript, validare Zod, setări, redactarea URL-urilor                                                                                    |
+| `packages/pdp-availability` | Motor autonom Playwright, rețea verificată, observații vizuale și reguli pure                                                                        |
+| `tests/fixtures`            | Server controlat pentru teste; nu este un backend de rezultate demonstrative                                                                         |
 
 Dependențele sunt administrate prin pnpm, cu lockfile. Frontendul nu importă Playwright sau codul bazei de date. Motorul nu depinde de Fastify sau React.
 
@@ -22,6 +22,10 @@ Dependențele sunt administrate prin pnpm, cu lockfile. Frontendul nu importă P
 6. Observarea la ~250 ms analizează conținutul vizibil, media, loader, semnale de produs, blocare și eroare contextuală. Nu utilizează `networkidle` și nu acționează butoane.
 7. Șapte funcții de evaluare generează PASS / FAIL / WARNING / INCONCLUSIVE / NOT_APPLICABLE, explicații și date numerice. O captură este încercată pentru rezultate care necesită atenție, dacă pagina nu este sensibilă/blocată.
 8. Închiderea contextului, browserului, proxy-ului și socketurilor este obligatorie. Raportul final este salvat, UI îl citește prin polling.
+
+Pe parcurs, motorul emite faza curentă (`PREPARING` → `NAVIGATING` → `OBSERVING` → `EVALUATING` → `EVIDENCE`), salvată ca `phase` pe scanare și folosită de animația de progres.
+
+Analiza paginii rulează ca script autonom în `page.evaluate`. Aplicația rulează prin `tsx`, care injectează helperul `__name` în funcțiile compilate; scriptul definește local acest helper, altfel fiecare observație eșua. Eroarea de analiză este păstrată în `observation.analysisError`, iar testul `tests/integration/runtime.test.ts` rulează scannerul exact prin `node --import tsx`.
 
 Deadline-ul global acoperă pornirea, navigarea și observarea; resursele sunt eliberate și după întrerupere. Erorile scannerului devin stări terminale. O oprire neașteptată lasă înregistrări QUEUED/RUNNING recuperate ca FAILED la următoarea pornire. Coada nu este reexecutată automat.
 

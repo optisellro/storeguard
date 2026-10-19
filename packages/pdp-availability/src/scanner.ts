@@ -6,20 +6,30 @@ import type {
   Observation,
   Settings,
   Report,
+  ScanPhase,
 } from "../../contracts/src/index.js";
 import { redactUrl } from "../../contracts/src/index.js";
 import { NetworkPolicy, SecurityError, safeCause } from "./security.js";
 import { createEgressProxy } from "./proxy.js";
 import { sample } from "./sample.js";
 import { evaluate, overall } from "./rules.js";
-export const ENGINE_VERSION = "1.0.0";
+export const ENGINE_VERSION = "1.1.0";
+const MAX_ANALYSIS_FAILURES = 3;
 export async function scanPage(
   url: string,
   settings: Settings,
   expectedActive: boolean,
   evidenceFile: string,
   policy = new NetworkPolicy(),
+  onPhase: (phase: ScanPhase) => void = () => {},
 ): Promise<Report> {
+  const phase = (value: ScanPhase) => {
+    try {
+      onPhase(value);
+    } catch {
+      /* progress reporting must never affect the scan */
+    }
+  };
   const start = performance.now(),
     elapsed = () => Math.round(performance.now() - start);
   const o: Observation = {
@@ -38,6 +48,7 @@ export async function scanPage(
     samples: [],
     screenshot: false,
     selectorError: null,
+    analysisError: null,
   };
   let navStart = 0;
   const navElapsed = () => Math.round(performance.now() - navStart);
@@ -49,6 +60,7 @@ export async function scanPage(
     expired = false;
   const operation = async () => {
     try {
+      phase("PREPARING");
       await policy.resolve(url);
       if (expired) return;
       proxy = await createEgressProxy(
@@ -187,6 +199,7 @@ export async function scanPage(
         )
           o.securityBlocked = true;
       });
+      phase("NAVIGATING");
       navStart = performance.now();
       try {
         await page.goto(url, {
@@ -201,7 +214,9 @@ export async function scanPage(
           o.redirectError = "Buclă de redirect detectată de Chromium.";
       }
       if (!o.navigationError && !expired) {
+        phase("OBSERVING");
         const renderStart = navElapsed();
+        let failures = 0;
         while (
           !expired &&
           navElapsed() - renderStart <= settings.renderTimeoutMs + 250
@@ -209,6 +224,8 @@ export async function scanPage(
           try {
             const current = await sample(page, settings, navElapsed());
             o.samples.push(current);
+            failures = 0;
+            o.analysisError = null;
             const tail = o.samples.slice(-3);
             const stable =
               tail.length === 3 &&
@@ -232,6 +249,8 @@ export async function scanPage(
             }
             // A JavaScript redirect can briefly replace the execution context.
             if (page.isClosed()) throw error;
+            o.analysisError = safeCause(error);
+            if (++failures >= MAX_ANALYSIS_FAILURES && !o.samples.length) break;
           }
           if (navElapsed() - renderStart >= settings.renderTimeoutMs) break;
           await new Promise((resolve) => setTimeout(resolve, 250));
@@ -240,6 +259,7 @@ export async function scanPage(
       const actualUrl = page.url();
       if (actualUrl.startsWith("http")) o.finalUrl = redactUrl(actualUrl);
       o.totalMs = elapsed();
+      phase("EVALUATING");
       const rules = evaluate(o, settings, expectedActive);
       if (
         rules.some((r) =>
@@ -252,6 +272,7 @@ export async function scanPage(
         o.httpStatus !== null
       ) {
         try {
+          phase("EVIDENCE");
           await mkdir(path.dirname(evidenceFile), { recursive: true });
           await page.screenshot({
             path: evidenceFile,
