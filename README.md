@@ -33,6 +33,22 @@ pnpm browser:install
 pnpm dev
 ```
 
+### Eroare `Failed to switch pnpm` / `ENOENT` pe macOS
+
+Dacă pnpm încearcă să pornească un executabil absent din `Library/pnpm/.tools`, rulează versiunea JavaScript direct prin npm/npx. Astfel nu folosești launcherul pnpm care indică fișierul lipsă și nu trebuie să ștergi instalările globale sau datele aplicației.
+
+Din directorul `storeguard`, cu Node.js cel puțin 22.13 (recomandat 24):
+
+```bash
+node --version
+npx --yes pnpm@11.25.0 --version
+npx --yes pnpm@11.25.0 install --frozen-lockfile
+npx --yes pnpm@11.25.0 browser:install
+npx --yes pnpm@11.25.0 dev
+```
+
+Comanda de versiune trebuie să afișeze `11.25.0`. Pentru această variantă, continuă să prefixezi comenzile pnpm cu `npx --yes pnpm@11.25.0`. Mecanismul direct a fost verificat în mediul Linux; confirmarea rulării pe Mac rămâne locală. Vezi și [documentația npm pentru npx](https://docs.npmjs.com/cli/v11/commands/npx/).
+
 Pe un Linux nou, dacă lipsesc biblioteci de sistem:
 
 ```bash
