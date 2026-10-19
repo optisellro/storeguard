@@ -158,7 +158,7 @@ export function ComingSoon({
         description={item.description}
       />
       <Card>
-        <div className="soon">
+        <div className="soon-panel">
           <span className="soon-icon">
             <Icon size={18} />
           </span>

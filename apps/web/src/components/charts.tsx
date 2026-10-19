@@ -129,7 +129,7 @@ export function StackedBars({
                     />
                   );
                 })}
-                {(i % labelEvery === 0 || i === data.length - 1) && (
+                {(data.length - 1 - i) % labelEvery === 0 && (
                   <text
                     className="axis"
                     x={pad.left + slot * i + slot / 2}
@@ -256,9 +256,9 @@ export function TrendLine({
           />
           <text
             className="axis threshold-label"
-            x={width - pad.right}
+            x={pad.left + 6}
             y={y(threshold) - 5}
-            textAnchor="end"
+            textAnchor="start"
           >
             prag {seconds(threshold)}
           </text>
@@ -383,7 +383,7 @@ export function LoadTimeline({
         <span>0 s</span>
         <span
           style={{ left: pct(threshold) }}
-          className="timeline-threshold-label"
+          className={`timeline-threshold-label${threshold / end > 0.8 ? " at-end" : ""}`}
         >
           prag {seconds(threshold)}
         </span>

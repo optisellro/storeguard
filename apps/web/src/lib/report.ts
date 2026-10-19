@@ -146,9 +146,22 @@ export function explainRule(
   if (health === "unknown") {
     const reason = barrierReason(o);
     const last = o.samples.at(-1);
-    const summary =
-      reason ??
-      (rule.id === "OS-PDP-010"
+    const failedResponse =
+      !!o.navigationError ||
+      (o.httpStatus !== null && (o.httpStatus < 200 || o.httpStatus >= 300));
+    if (
+      !reason &&
+      failedResponse &&
+      ["OS-PDP-003", "OS-PDP-004", "OS-PDP-009", "OS-PDP-010"].includes(rule.id)
+    )
+      return {
+        ...base,
+        health: "na",
+        summary: "Nu se aplică, deoarece pagina nu s-a deschis normal.",
+      };
+    const summary = reason
+      ? "Nu a putut fi verificat, din motivul de mai sus."
+      : rule.id === "OS-PDP-010"
         ? "Nu am putut măsura momentul în care produsul devine vizibil."
         : o.selectorError
           ? "Un selector din setări nu este valid, așa că acest punct nu a fost verificat."
@@ -156,7 +169,7 @@ export function explainRule(
             ? "Nu am recunoscut automat elementele produsului (titlu, preț sau imagine)."
             : o.httpStatus === null
               ? "Nu am primit un răspuns de la pagină."
-              : "Acest punct nu a putut fi verificat sigur în această sesiune.");
+              : "Acest punct nu a putut fi verificat sigur în această sesiune.";
     return { ...base, summary };
   }
   switch (rule.id) {
@@ -302,8 +315,8 @@ export function summarize(scan: Scan): Summary {
           : "Pagina funcționează, cu verificări incomplete",
       detail:
         unknown.length === items.length
-          ? (unknown[0]?.summary ?? "")
-          : `${plural(unknown.length, "verificare nu a putut fi confirmată", "verificări nu au putut fi confirmate")}. ${unknown[0].summary}`,
+          ? (barrier ?? unknown[0]?.summary ?? "")
+          : `${plural(unknown.length, "verificare nu a putut fi confirmată", "verificări nu au putut fi confirmate")}. ${barrier ?? unknown[0].summary}`,
     };
   return {
     health: "ok",

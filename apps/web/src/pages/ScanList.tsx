@@ -49,7 +49,9 @@ export function ScanList({
                 ? scan.state === "QUEUED"
                   ? "În așteptare…"
                   : "Verificare în curs…"
-                : summarize(scan).title;
+                : health === "ok"
+                  ? summarize(scan).title
+                  : summarize(scan).detail;
             return (
               <tr
                 key={scan.id}
@@ -65,7 +67,9 @@ export function ScanList({
                 <td>
                   <StatusPill health={health} />
                 </td>
-                <td className="col-wide muted-cell">{detail}</td>
+                <td className="col-wide muted-cell">
+                  <span className="clip">{detail}</span>
+                </td>
                 <td className="num mono">
                   {seconds(scan.report?.observation.usableMs)}
                 </td>

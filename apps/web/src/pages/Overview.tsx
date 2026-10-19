@@ -99,12 +99,6 @@ export function Overview({
       <PageHeader
         title="Prezentare generală"
         description="Starea magazinului tău, pe baza verificărilor efectuate."
-        actions={
-          <button className="btn primary" onClick={() => navigate("/new")}>
-            <Plus size={14} />
-            Verificare nouă
-          </button>
-        }
       />
       {!pages.length && !running ? (
         <Card className="onboarding">
@@ -153,7 +147,7 @@ export function Overview({
           {pages.length > 0 && (
             <div className={`headline h-${headline.health}`}>
               <StatusIcon health={headline.health} size={28} />
-              <div>
+              <div className="headline-text">
                 <strong>{headline.title}</strong>
                 <span>{headline.detail}</span>
               </div>

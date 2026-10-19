@@ -42,12 +42,6 @@ export function PdpModule({
         eyebrow="Modul · Disponibilitate"
         title={PDP_MODULE.title}
         description={PDP_MODULE.description}
-        actions={
-          <button className="btn primary" onClick={() => navigate("/new")}>
-            <Plus size={14} />
-            Verificare nouă
-          </button>
-        }
       />
       <div className="tabs" role="tablist">
         {tabs.map((t) => (
@@ -134,7 +128,11 @@ export function PdpModule({
                           <td>
                             <StatusPill health={sum.health} />
                           </td>
-                          <td className="col-wide muted-cell">{sum.title}</td>
+                          <td className="col-wide muted-cell">
+                            <span className="clip">
+                              {sum.health === "ok" ? sum.title : sum.detail}
+                            </span>
+                          </td>
                           <td className="num mono">
                             {seconds(latest.report?.observation.usableMs)}
                           </td>

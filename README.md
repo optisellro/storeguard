@@ -1,8 +1,8 @@
-# StoreGuard · PDP Availability & Loading v1.0
+# StoreGuard · monitorizarea magazinului online
 
-Aplicație locală pentru auditarea **disponibilității și încărcării unei pagini de produs reale**. Introduci URL-ul, backendul deschide efectiv pagina cu Chromium, apoi salvează raportul și dovezile. Fără rezultate demonstrative în dashboard, fără plugin în magazin, fără AI, fără conturi de magazin.
+Platformă de monitorizare a magazinului online, construită pe module. Rulează momentan local. Primul modul implementat verifică **disponibilitatea și încărcarea paginilor de produs reale**. Introduci URL-ul, backendul deschide efectiv pagina cu Chromium, apoi salvează raportul și dovezile. Fără rezultate demonstrative în dashboard, fără plugin în magazin, fără AI, fără conturi de magazin.
 
-**Modul unic:** `PDP Availability & Loading`. Șapte reguli: OS-PDP-001, 002, 003, 004, 006, 009, 010. Nu sunt implementate testarea Add to Cart, variante, checkout, SEO, abonamente sau conturi multiple.
+**Modul implementat:** `Pagini de produs · disponibilitate` (motor 1.1.0). Șapte reguli: OS-PDP-001, 002, 003, 004, 006, 009, 010. Nu sunt implementate testarea Add to Cart, variante, checkout, SEO, abonamente sau conturi multiple.
 
 ## Cerințe
 
@@ -70,15 +70,24 @@ pnpm start
 
 API-ul și frontendul ascultă exclusiv pe `127.0.0.1`. Porturile sunt fixe pentru a păstra protecțiile Host/Origin explicite. Nu expune porturile pe internet sau prin tuneluri: MVP-ul nu are autentificare.
 
+## Interfața
+
+Platforma este construită pe module. Sidebarul (restrângibil, cu grupuri pliabile și căutare de modul) este generat din `apps/web/src/app/navigation.ts`; un modul nou înseamnă o intrare acolo și pagina lui. Modulele încă neimplementate apar ca **În curând** și nu afișează niciun rezultat.
+
+- **Prezentare generală:** starea magazinului într-o propoziție, indicatori și grafice (verificări pe zi, timp până la produs vizibil), probleme active și starea modulelor. Toate valorile sunt calculate din verificările reale salvate local.
+- **Pagini de produs:** paginile verificate cu ultima stare și istoricul fiecăreia, istoricul complet și explicația celor 7 verificări.
+- **Raport:** verdict pe înțelesul clientului, problemele primele, „Ce poți face” pentru fiecare problemă, captură, cronologia încărcării și istoricul paginii. Codurile regulilor și datele tehnice sunt disponibile pliat, pentru echipa tehnică.
+- **Verificare în curs:** animație legată de fazele reale trimise de scanner (`PREPARING`, `NAVIGATING`, `OBSERVING`, `EVALUATING`, `EVIDENCE`).
+
 ## Prima pagină reală
 
-1. Deschide interfața și selectează **Scanare nouă**.
+1. Deschide interfața și apasă **Verificare nouă**.
 2. Introdu adresa publică exactă a produsului tău (`https://...`). Adresele locale/private și porturile nestandard sunt blocate.
-3. Bifează **Acest produs ar trebui să fie activ și accesibil** numai dacă această așteptare este cunoscută. Fără bifă, HTTP 404/410 generează WARNING.
-4. Apasă **Scanează pagina**. Progresul este actualizat automat; raportul grupează regulile după rezultat.
-5. Deschide detaliile tehnice, lanțul de redirecturi și captura, dacă a putut fi colectată.
+3. **Produsul ar trebui să fie activ** este bifat implicit: un răspuns 404/410 este raportat ca problemă. Debifează pentru produse retrase intenționat (atunci 404/410 generează doar „Atenție”).
+4. Apasă **Pornește verificarea**. Progresul este afișat în timp real, apoi raportul apare automat.
+5. Deschide un rând din raport pentru recomandare și detalii tehnice.
 
-`Setări scanare` permite configurarea timeouturilor, pragului lent, limitei redirecturilor, selectorilor CSS, mesajelor specifice și destinației așteptate. Sunt salvate pentru scanările viitoare. Un selector CSS invalid produce INCONCLUSIVE în raport, nu PASS.
+**Setări** permite configurarea timpilor, pragului de încărcare lentă, limitei de redirecționări, selectorilor CSS, mesajelor specifice și destinației așteptate. Sunt salvate pentru verificările viitoare. Un selector CSS invalid produce „Neverificat” în raport, nu „Funcționează”.
 
 ## Timpi și interpretare
 
