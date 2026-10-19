@@ -72,22 +72,27 @@ API-ul și frontendul ascultă exclusiv pe `127.0.0.1`. Porturile sunt fixe pent
 
 ## Interfața
 
-Platforma este construită pe module. Sidebarul (restrângibil, cu grupuri pliabile și căutare de modul) este generat din `apps/web/src/app/navigation.ts`; un modul nou înseamnă o intrare acolo și pagina lui. Modulele încă neimplementate apar ca **În curând** și nu afișează niciun rezultat.
+Sidebarul conține doar modulele implementate (`apps/web/src/app/navigation.ts`). Momentan: **Audit PDP**, cu tab-urile:
 
-- **Prezentare generală:** starea magazinului într-o propoziție, indicatori și grafice (verificări pe zi, timp până la produs vizibil), probleme active și starea modulelor. Toate valorile sunt calculate din verificările reale salvate local.
-- **Pagini de produs:** paginile verificate cu ultima stare și istoricul fiecăreia, istoricul complet și explicația celor 7 verificări.
-- **Raport:** verdict pe înțelesul clientului, problemele primele, „Ce poți face” pentru fiecare problemă, captură, cronologia încărcării și istoricul paginii. Codurile regulilor și datele tehnice sunt disponibile pliat, pentru echipa tehnică.
-- **Verificare în curs:** animație legată de fazele reale trimise de scanner (`PREPARING`, `NAVIGATING`, `OBSERVING`, `EVALUATING`, `EVIDENCE`).
+- **Prezentare:** starea paginilor într-o propoziție, indicatori, grafice (verificări pe zi, timp până la produs vizibil), probleme active și verificări recente, calculate din verificările reale salvate local.
+- **Pagini:** fiecare pagină verificată, cu ultima stare și istoricul ei.
+- **Istoric:** toate verificările, filtrabile după rezultat.
+- **Ce verificăm:** cele 7 verificări, explicate.
+- **Setări:** timpi, praguri și semnale specifice magazinului.
+
+**Raport:** verdict pe înțelesul clientului, problemele primele, „Ce poți face”, captură, cronologia încărcării și istoricul paginii; datele tehnice sunt pliate pentru echipa tehnică.
+
+**Verificare în curs:** animația urmează fazele reale ale scannerului. Când pagina afișează conținut, scannerul salvează o singură previzualizare JPEG mascată (câmpuri, zone `[data-private]`, emailuri), afișată în animație. Previzualizarea este servită doar cât rulează verificarea și este ștearsă la final.
 
 ## Prima pagină reală
 
-1. Deschide interfața și apasă **Verificare nouă**.
+1. Deschide interfața (se deschide pe **Audit PDP**) și apasă **Verificare nouă**.
 2. Introdu adresa publică exactă a produsului tău (`https://...`). Adresele locale/private și porturile nestandard sunt blocate.
 3. **Produsul ar trebui să fie activ** este bifat implicit: un răspuns 404/410 este raportat ca problemă. Debifează pentru produse retrase intenționat (atunci 404/410 generează doar „Atenție”).
 4. Apasă **Pornește verificarea**. Progresul este afișat în timp real, apoi raportul apare automat.
 5. Deschide un rând din raport pentru recomandare și detalii tehnice.
 
-**Setări** permite configurarea timpilor, pragului de încărcare lentă, limitei de redirecționări, selectorilor CSS, mesajelor specifice și destinației așteptate. Sunt salvate pentru verificările viitoare. Un selector CSS invalid produce „Neverificat” în raport, nu „Funcționează”.
+Tab-ul **Setări** din Audit PDP permite configurarea timpilor, pragului de încărcare lentă, limitei de redirecționări, selectorilor CSS, mesajelor specifice și destinației așteptate. Sunt salvate pentru verificările viitoare. Un selector CSS invalid produce „Neverificat” în raport, nu „Funcționează”.
 
 ## Timpi și interpretare
 
