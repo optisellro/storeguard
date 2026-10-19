@@ -130,6 +130,8 @@ export interface Scan {
   error: string | null;
   /** Current stage while RUNNING; absent for older records. */
   phase?: ScanPhase | null;
+  /** A masked live preview of the page exists while the scan runs. */
+  preview?: boolean;
 }
 export function redactUrl(value: string): string {
   try {

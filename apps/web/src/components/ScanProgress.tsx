@@ -67,29 +67,40 @@ export function ScanProgress({ scan, ahead }: { scan: Scan; ahead: number }) {
         <div className="browser-progress">
           <span style={{ width: `${progress}%` }} />
         </div>
-        <div className="browser-page">
-          <div className="sk-nav">
-            <span className="sk sk-logo" />
-            <span className="sk sk-link" />
-            <span className="sk sk-link" />
-            <span className="sk sk-link" />
+        {scan.preview ? (
+          <div className="browser-page has-shot">
+            <img
+              className="browser-shot"
+              src={`/api/scans/${scan.id}/preview`}
+              alt="Pagina produsului, așa cum a fost încărcată de scanner"
+            />
+            <span className="scan-beam" />
           </div>
-          <div className="sk-product">
-            <div className="sk sk-image" />
-            <div className="sk-info">
-              <span className="sk sk-title" />
-              <span className="sk sk-title short" />
-              <span className="sk sk-price" />
-              <span className="sk sk-line" />
-              <span className="sk sk-line" />
-              <span className="sk sk-line short" />
-              <span className="sk sk-button" />
+        ) : (
+          <div className="browser-page">
+            <div className="sk-nav">
+              <span className="sk sk-logo" />
+              <span className="sk sk-link" />
+              <span className="sk sk-link" />
+              <span className="sk sk-link" />
             </div>
+            <div className="sk-product">
+              <div className="sk sk-image" />
+              <div className="sk-info">
+                <span className="sk sk-title" />
+                <span className="sk sk-title short" />
+                <span className="sk sk-price" />
+                <span className="sk sk-line" />
+                <span className="sk sk-line" />
+                <span className="sk sk-line short" />
+                <span className="sk sk-button" />
+              </div>
+            </div>
+            <span className="scan-beam" />
+            <span className="scan-focus focus-a" />
+            <span className="scan-focus focus-b" />
           </div>
-          <span className="scan-beam" />
-          <span className="scan-focus focus-a" />
-          <span className="scan-focus focus-b" />
-        </div>
+        )}
       </div>
       <div className="scan-steps">
         <p className="eyebrow">Verificare în curs · {elapsed.toFixed(0)} s</p>

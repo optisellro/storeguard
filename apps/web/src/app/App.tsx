@@ -7,30 +7,19 @@ import {
 } from "../../../../packages/contracts/src/index";
 import { Sidebar } from "../components/Sidebar";
 import { api } from "../lib/api";
-import { latestPerPage } from "../lib/stats";
-import { scanHealth } from "../lib/report";
-import { allItems, PDP_MODULE } from "./navigation";
-import { Overview } from "../pages/Overview";
+import { PDP_MODULE, pdpTabs, type PdpTab } from "./navigation";
 import { PdpModule } from "../pages/PdpModule";
 import { NewScan } from "../pages/NewScan";
 import { Report } from "../pages/Report";
-import { Issues, History, ComingSoon } from "../pages/Lists";
-import { SettingsPage } from "../pages/SettingsPage";
 
 const SIDEBAR_KEY = "storeguard.sidebarCollapsed";
 
 const readRoute = () => location.hash.slice(1) || "/";
 
-function activeItem(route: string): string {
+/** Audit PDP tab for a route; null for routes outside the module tabs. */
+function pdpTab(route: string): PdpTab | null {
   if (route === "/") return "overview";
-  if (route.startsWith("/soon/")) return route.split("/")[2] ?? "";
-  if (
-    route === "/new" ||
-    route.startsWith("/scan/") ||
-    route.startsWith(PDP_MODULE.path)
-  )
-    return PDP_MODULE.id;
-  return route.slice(1).split("/")[0];
+  return pdpTabs.find((t) => t.path === route)?.id ?? null;
 }
 
 export function App() {
@@ -106,17 +95,13 @@ export function App() {
   const onCreated = (scan: Scan) =>
     setScans((current) => [scan, ...current.filter((s) => s.id !== scan.id)]);
 
-  const issues = latestPerPage(scans).filter((s) =>
-    ["fail", "warn"].includes(scanHealth(s)),
-  ).length;
-  const current = activeItem(route);
-  const item = allItems.find((i) => i.id === current);
+  const tab = pdpTab(route);
   const leaf =
     route === "/new"
       ? "Verificare nouă"
       : route.startsWith("/scan/")
         ? "Raport"
-        : null;
+        : (pdpTabs.find((t) => t.id === tab)?.label ?? "Prezentare");
 
   let page: ReactNode;
   if (!loaded && !error)
@@ -139,35 +124,23 @@ export function App() {
     ) : (
       <div className="loading">Verificarea nu a fost găsită.</div>
     );
-  } else if (route.startsWith(PDP_MODULE.path)) {
-    const sub = route.slice(PDP_MODULE.path.length);
+  } else
     page = (
       <PdpModule
-        tab={
-          sub === "/history" ? "history" : sub === "/rules" ? "rules" : "pages"
-        }
+        tab={tab ?? "overview"}
         scans={scans}
+        settings={settings}
+        onSaveSettings={setSettings}
         navigate={navigate}
       />
     );
-  } else if (route === "/issues")
-    page = <Issues scans={scans} navigate={navigate} />;
-  else if (route === "/history")
-    page = <History scans={scans} navigate={navigate} />;
-  else if (route === "/settings")
-    page = <SettingsPage settings={settings} onSave={setSettings} />;
-  else if (route.startsWith("/soon/"))
-    page = <ComingSoon id={route.split("/")[2] ?? ""} navigate={navigate} />;
-  else
-    page = <Overview scans={scans} settings={settings} navigate={navigate} />;
 
   return (
     <div className={`app${collapsed ? " collapsed" : ""}`}>
       <Sidebar
-        active={current}
+        active={PDP_MODULE.id}
         collapsed={collapsed}
         mobileOpen={mobileOpen}
-        issues={issues}
         scannerOnline={online}
         onNavigate={navigate}
         onToggle={toggle}
@@ -186,22 +159,14 @@ export function App() {
             <Menu size={16} />
           </button>
           <nav className="crumbs" aria-label="Locație">
-            <span>{item?.group ?? "General"}</span>
+            <button
+              className="crumb-link"
+              onClick={() => navigate(PDP_MODULE.path)}
+            >
+              {PDP_MODULE.label}
+            </button>
             <span className="sep">/</span>
-            {leaf ? (
-              <>
-                <button
-                  className="crumb-link"
-                  onClick={() => navigate(item?.path ?? "/")}
-                >
-                  {item?.label}
-                </button>
-                <span className="sep">/</span>
-                <strong>{leaf}</strong>
-              </>
-            ) : (
-              <strong>{item?.label ?? "Prezentare generală"}</strong>
-            )}
+            <strong>{leaf}</strong>
           </nav>
           <div className="topbar-right">
             {route !== "/new" && (

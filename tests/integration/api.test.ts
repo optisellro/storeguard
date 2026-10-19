@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fixtureServer } from "../fixtures/server.js";
@@ -8,7 +8,15 @@ import { NetworkPolicy } from "../../packages/pdp-availability/src/security.js";
 import { buildApp } from "../../apps/api/src/app.js";
 import { openDatabase } from "../../apps/api/src/database.js";
 import { ScanQueue } from "../../apps/api/src/queue.js";
-import { defaults, type Scan } from "../../packages/contracts/src/index.js";
+import {
+  evaluate,
+  overall,
+} from "../../packages/pdp-availability/src/rules.js";
+import {
+  defaults,
+  type Observation,
+  type Scan,
+} from "../../packages/contracts/src/index.js";
 describe("API, persistență și coadă", () => {
   it("validează URL/setări, previne DNS rebinding spre API și cereri cross-origin", async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), "sg-api-"));
@@ -125,6 +133,84 @@ describe("API, persistență și coadă", () => {
     } finally {
       await app.close();
       await fixture.close();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+  it("previzualizarea live e servită doar cât rulează scanarea, apoi ștearsă", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "sg-preview-"));
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    let previewPath = "";
+    const app = await buildApp({
+      directory: dir,
+      scanner: async (url, settings, active, _file, _policy, progress) => {
+        progress?.phase?.("OBSERVING");
+        previewPath = progress!.previewFile!;
+        await mkdir(path.dirname(previewPath), { recursive: true });
+        await writeFile(previewPath, Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+        progress?.preview?.();
+        await gate;
+        const o: Observation = {
+          httpStatus: 200,
+          finalUrl: url,
+          redirects: [],
+          navigationMs: 10,
+          domContentLoadedMs: 10,
+          usableMs: null,
+          totalMs: 20,
+          navigationError: null,
+          environmentError: null,
+          securityBlocked: false,
+          blockedRequests: 0,
+          redirectError: null,
+          samples: [],
+          screenshot: false,
+          selectorError: null,
+          analysisError: null,
+        };
+        const rules = evaluate(o, settings, active);
+        return {
+          observation: o,
+          rules,
+          engineVersion: "test",
+          rulesVersion: "test",
+          verdict: overall(rules),
+        };
+      },
+    });
+    try {
+      const id = (
+        await app.inject({
+          method: "POST",
+          url: "/api/scans",
+          payload: { url: "https://example.com/produs" },
+        })
+      ).json().id;
+      for (let i = 0; i < 50 && !previewPath; i++)
+        await new Promise((r) => setTimeout(r, 10));
+      const running = (await app.inject(`/api/scans/${id}`)).json();
+      expect(running.state).toBe("RUNNING");
+      expect(running.phase).toBe("OBSERVING");
+      expect(running.preview).toBe(true);
+      const image = await app.inject(`/api/scans/${id}/preview`);
+      expect(image.statusCode).toBe(200);
+      expect(image.headers["content-type"]).toBe("image/jpeg");
+      release();
+      for (let i = 0; i < 100; i++) {
+        if ((await app.inject(`/api/scans/${id}`)).json().state !== "RUNNING")
+          break;
+        await new Promise((r) => setTimeout(r, 10));
+      }
+      await new Promise((r) => setTimeout(r, 20));
+      const done = (await app.inject(`/api/scans/${id}`)).json();
+      expect(done.state).toBe("COMPLETED");
+      expect(done.preview).toBe(false);
+      expect((await app.inject(`/api/scans/${id}/preview`)).statusCode).toBe(
+        404,
+      );
+      await expect(stat(previewPath)).rejects.toThrow();
+    } finally {
+      await app.close();
       await rm(dir, { recursive: true, force: true });
     }
   });

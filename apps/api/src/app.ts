@@ -2,7 +2,7 @@ import Fastify from "fastify";
 import { getDomain } from "tldts";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { readFile } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import {
   scanInputSchema,
   settingsSchema,
@@ -108,7 +108,17 @@ export async function buildApp(options: AppOptions = {}) {
         getDomain(target.hostname, { allowPrivateDomains: true }) ??
           target.hostname,
         async () => {
-          db.put({ ...scan, state: "RUNNING", phase: "PREPARING" });
+          const previewFile = path.join(
+            directory,
+            "evidence",
+            `${scan.id}-preview.jpg`,
+          );
+          let live: Scan = { ...scan, state: "RUNNING", phase: "PREPARING" };
+          const update = (patch: Partial<Scan>) => {
+            live = { ...live, ...patch };
+            db.put(live);
+          };
+          db.put(live);
           try {
             const report: Report = await scanner(
               url,
@@ -116,7 +126,11 @@ export async function buildApp(options: AppOptions = {}) {
               expectedActive,
               path.join(directory, "evidence", `${scan.id}.png`),
               undefined,
-              (phase) => db.put({ ...scan, state: "RUNNING", phase }),
+              {
+                phase: (phase) => update({ phase }),
+                previewFile,
+                preview: () => update({ preview: true }),
+              },
             );
             const state =
               report.observation.securityBlocked ||
@@ -129,15 +143,21 @@ export async function buildApp(options: AppOptions = {}) {
               state,
               report,
               phase: null,
+              preview: false,
               finishedAt: new Date().toISOString(),
             });
           } catch (error) {
             db.put({
               ...scan,
               state: "FAILED",
+              phase: null,
+              preview: false,
               finishedAt: new Date().toISOString(),
               error: safeCause(error),
             });
+          } finally {
+            // The live preview only serves the progress view; it is not kept as evidence.
+            await rm(previewFile, { force: true }).catch(() => {});
           }
         },
       );
@@ -152,6 +172,27 @@ export async function buildApp(options: AppOptions = {}) {
     }
     return reply.code(202).send(scan);
   });
+  app.get<{ Params: { id: string } }>(
+    "/api/scans/:id/preview",
+    async (req, reply) => {
+      if (
+        !/^[0-9a-f-]{36}$/.test(req.params.id) ||
+        !db.get(req.params.id)?.preview
+      )
+        return reply.code(404).send({ error: "Previzualizare indisponibilă." });
+      try {
+        return reply
+          .type("image/jpeg")
+          .send(
+            await readFile(
+              path.join(directory, "evidence", `${req.params.id}-preview.jpg`),
+            ),
+          );
+      } catch {
+        return reply.code(404).send({ error: "Previzualizare indisponibilă." });
+      }
+    },
+  );
   app.get<{ Params: { id: string } }>(
     "/api/scans/:id/screenshot",
     async (req, reply) => {

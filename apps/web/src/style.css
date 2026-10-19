@@ -2335,3 +2335,45 @@ textarea:focus {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* Live preview of the real page during a scan */
+.browser-page.has-shot {
+  height: auto;
+  aspect-ratio: 1440 / 900;
+  padding: 0;
+  background: var(--bg-subtle);
+}
+.browser-shot {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+  animation: shot-in 0.6s ease;
+}
+@keyframes shot-in {
+  from {
+    opacity: 0;
+    filter: blur(6px);
+  }
+}
+.browser .browser-page.has-shot .scan-beam {
+  animation-name: beam-pct;
+}
+@keyframes beam-pct {
+  0% {
+    transform: none;
+    top: -70px;
+  }
+  100% {
+    transform: none;
+    top: 100%;
+  }
+}
+.side-group-label.static {
+  cursor: default;
+  margin-top: 8px;
+}
+.is-collapsed .side-group-label.static {
+  display: none;
+}

@@ -1,6 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import { Umzug } from "umzug";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import type { Scan, Settings } from "../../../packages/contracts/src/index.js";
 import { defaults } from "../../../packages/contracts/src/index.js";
@@ -58,25 +58,33 @@ export async function openDatabase(directory: string) {
     data: string;
   }[]) {
     const scan: Scan = JSON.parse(row.data);
-    if (["RUNNING", "QUEUED"].includes(scan.state))
+    if (["RUNNING", "QUEUED"].includes(scan.state)) {
+      rmSync(path.join(directory, "evidence", `${scan.id}-preview.jpg`), {
+        force: true,
+      });
       put({
         ...scan,
+        phase: null,
+        preview: false,
         state: "FAILED",
         finishedAt: new Date().toISOString(),
         error: "Aplicația a fost oprită înainte de finalizarea scanării.",
       });
+    }
   }
   return {
     put,
     all,
     get: (id: string): Scan | null => {
       const row = db.prepare("SELECT data FROM scans WHERE id=?").get(id) as
-        { data: string } | undefined;
+        | { data: string }
+        | undefined;
       return row ? JSON.parse(row.data) : null;
     },
     settings: (): Settings => {
       const row = db.prepare("SELECT data FROM settings WHERE id=1").get() as
-        { data: string } | undefined;
+        | { data: string }
+        | undefined;
       return row ? JSON.parse(row.data) : defaults;
     },
     saveSettings: (settings: Settings) => {

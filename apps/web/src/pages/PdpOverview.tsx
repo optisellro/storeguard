@@ -1,20 +1,6 @@
-import {
-  ArrowRight,
-  PackageSearch,
-  Plus,
-  ScanLine,
-  ShieldCheck,
-  ChevronRight,
-} from "lucide-react";
+import { ArrowRight, ScanLine, ShieldCheck, ChevronRight } from "lucide-react";
 import type { Scan, Settings } from "../../../../packages/contracts/src/index";
-import {
-  Card,
-  Empty,
-  Metric,
-  PageHeader,
-  StatusIcon,
-  StatusPill,
-} from "../components/ui";
+import { Card, Empty, Metric, StatusIcon } from "../components/ui";
 import {
   Legend,
   StackedBars,
@@ -24,10 +10,10 @@ import {
 import { average, latestPerPage, loadSeries, perDay } from "../lib/stats";
 import { scanHealth, summarize, type Health } from "../lib/report";
 import { plural, relative, seconds, splitUrl } from "../lib/format";
-import { allItems, PDP_MODULE, comingSoonPath } from "../app/navigation";
+import { PDP_MODULE } from "../app/navigation";
 import { ScanList } from "./ScanList";
 
-export function Overview({
+export function PdpOverview({
   scans,
   settings,
   navigate,
@@ -64,7 +50,6 @@ export function Overview({
   ).length;
   const days = perDay(scans);
   const series = loadSeries(scans);
-  const soon = allItems.filter((i) => !i.path).slice(0, 5);
 
   const headline: { health: Health; title: string; detail: string } =
     !pages.length
@@ -96,10 +81,6 @@ export function Overview({
 
   return (
     <>
-      <PageHeader
-        title="Prezentare generală"
-        description="Starea magazinului tău, pe baza verificărilor efectuate."
-      />
       {!pages.length && !running ? (
         <Card className="onboarding">
           <div className="onboarding-grid">
@@ -217,103 +198,56 @@ export function Overview({
               )}
             </Card>
           </div>
-          <div className="grid-2-1">
-            <Card
-              title="Probleme active"
-              description="Ultima verificare a fiecărei pagini"
-              actions={
-                problems.length > 0 && (
-                  <button
-                    className="link-btn"
-                    onClick={() => navigate("/issues")}
-                  >
-                    Toate <ChevronRight size={13} />
-                  </button>
-                )
-              }
-              flush
-            >
-              {problems.length ? (
-                <ul className="issue-list">
-                  {problems.slice(0, 5).map((s) => {
-                    const sum = summarize(s);
-                    const { host, path } = splitUrl(s.url);
-                    return (
-                      <li key={s.id}>
-                        <button onClick={() => navigate(`/scan/${s.id}`)}>
-                          <StatusIcon health={sum.health} />
-                          <span className="issue-text">
-                            <strong>{sum.detail}</strong>
-                            <small>
-                              {host}
-                              {path} · {relative(s.createdAt)}
-                            </small>
-                          </span>
-                          <ChevronRight size={14} className="chev" />
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              ) : (
-                <Empty icon={ShieldCheck} title="Nicio problemă activă">
-                  Ultima verificare a fiecărei pagini nu a găsit erori.
-                </Empty>
-              )}
-            </Card>
-            <Card
-              title="Module"
-              description="Ce monitorizează StoreGuard"
-              flush
-            >
-              <ul className="module-list">
-                <li>
-                  <button onClick={() => navigate(PDP_MODULE.path)}>
-                    <span className="module-ico">
-                      <PackageSearch size={14} />
-                    </span>
-                    <span className="module-text">
-                      <strong>{PDP_MODULE.label}</strong>
-                      <small>
-                        {plural(pages.length, "pagină", "pagini")} · 7
-                        verificări
-                      </small>
-                    </span>
-                    <StatusPill
-                      health={
-                        failing
-                          ? "fail"
-                          : problems.length
-                            ? "warn"
-                            : pages.length
-                              ? "ok"
-                              : "unknown"
-                      }
-                      label="Activ"
-                    />
-                  </button>
-                </li>
-                {soon.map((item) => (
-                  <li key={item.id}>
-                    <button onClick={() => navigate(comingSoonPath(item.id))}>
-                      <span className="module-ico muted">
-                        <item.icon size={14} />
-                      </span>
-                      <span className="module-text">
-                        <strong>{item.label}</strong>
-                        <small>{item.group}</small>
-                      </span>
-                      <span className="tag">În curând</span>
-                    </button>
-                  </li>
-                ))}
+          <Card
+            title="Probleme active"
+            description="Ultima verificare a fiecărei pagini"
+            actions={
+              problems.length > 0 && (
+                <button
+                  className="link-btn"
+                  onClick={() => navigate(`${PDP_MODULE.path}/pages`)}
+                >
+                  Toate <ChevronRight size={13} />
+                </button>
+              )
+            }
+            flush
+          >
+            {problems.length ? (
+              <ul className="issue-list">
+                {problems.slice(0, 5).map((s) => {
+                  const sum = summarize(s);
+                  const { host, path } = splitUrl(s.url);
+                  return (
+                    <li key={s.id}>
+                      <button onClick={() => navigate(`/scan/${s.id}`)}>
+                        <StatusIcon health={sum.health} />
+                        <span className="issue-text">
+                          <strong>{sum.detail}</strong>
+                          <small>
+                            {host}
+                            {path} · {relative(s.createdAt)}
+                          </small>
+                        </span>
+                        <ChevronRight size={14} className="chev" />
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
-            </Card>
-          </div>
+            ) : (
+              <Empty icon={ShieldCheck} title="Nicio problemă activă">
+                Ultima verificare a fiecărei pagini nu a găsit erori.
+              </Empty>
+            )}
+          </Card>
           <Card
             title="Verificări recente"
             actions={
-              <button className="link-btn" onClick={() => navigate("/history")}>
+              <button
+                className="link-btn"
+                onClick={() => navigate(`${PDP_MODULE.path}/history`)}
+              >
                 Istoric complet <ChevronRight size={13} />
               </button>
             }

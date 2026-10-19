@@ -4,7 +4,7 @@ import {
   defaults,
   type Settings,
 } from "../../../../packages/contracts/src/index";
-import { Card, PageHeader } from "../components/ui";
+import { Card } from "../components/ui";
 import { api } from "../lib/api";
 
 type NumKey =
@@ -141,10 +141,6 @@ export function SettingsPage({
   };
   return (
     <>
-      <PageHeader
-        title="Setări"
-        description="Pragurile și semnalele folosite de verificări. Se aplică verificărilor viitoare."
-      />
       <form className="settings" onSubmit={submit}>
         <Card
           title="Timpi și limite"

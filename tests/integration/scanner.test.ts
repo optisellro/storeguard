@@ -42,6 +42,27 @@ describe("Chromium real · pagini controlate", () => {
     expect(r.rules.map((r) => r.status)).toEqual(Array(7).fill("PASS"));
     expect(r.observation.usableMs).toBeGreaterThan(0);
   });
+  it("previzualizare live mascată, JPEG, scrisă o singură dată", async () => {
+    const previewFile = path.join(dir, "preview.jpg");
+    let calls = 0;
+    const phases: string[] = [];
+    const r = await scanPage(
+      fixture.origin + "/normal",
+      settings,
+      false,
+      path.join(dir, "capture-preview.png"),
+      new NetworkPolicy(fixture.origin),
+      { phase: (p) => phases.push(p), previewFile, preview: () => calls++ },
+    );
+    expect(r.rules.map((rule) => rule.status)).toEqual(Array(7).fill("PASS"));
+    expect(calls).toBe(1);
+    expect((await stat(previewFile)).size).toBeGreaterThan(100);
+    expect(phases.slice(0, 3)).toEqual([
+      "PREPARING",
+      "NAVIGATING",
+      "OBSERVING",
+    ]);
+  });
   it.each(["/500", "/503"])(
     "%s -> FAIL OS001 și captură accesibilă",
     async (route) => {

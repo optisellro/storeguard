@@ -1,50 +1,42 @@
-import { ChevronRight, Plus, PackageSearch, Check, Minus } from "lucide-react";
-import type { Scan } from "../../../../packages/contracts/src/index";
+import { ChevronRight, PackageSearch, Check, Minus } from "lucide-react";
+import type { Scan, Settings } from "../../../../packages/contracts/src/index";
 import { Card, Empty, Metric, PageHeader, StatusPill } from "../components/ui";
 import { ResultStrip } from "../components/charts";
-import { ScanList } from "./ScanList";
+import { PdpOverview } from "./PdpOverview";
+import { HistoryTab } from "./HistoryTab";
+import { SettingsPage } from "./SettingsPage";
 import { latestPerPage } from "../lib/stats";
 import { ruleCopy, scanHealth, summarize } from "../lib/report";
 import { dateTime, relative, seconds, splitUrl } from "../lib/format";
-import { PDP_MODULE } from "../app/navigation";
-
-type Tab = "pages" | "history" | "rules";
+import { PDP_MODULE, pdpTabs, type PdpTab } from "../app/navigation";
 
 export function PdpModule({
   tab,
   scans,
+  settings,
+  onSaveSettings,
   navigate,
 }: {
-  tab: Tab;
+  tab: PdpTab;
   scans: Scan[];
+  settings: Settings;
+  onSaveSettings: (s: Settings) => void;
   navigate: (path: string) => void;
 }) {
   const pages = latestPerPage(scans);
   const healths = pages.map(scanHealth);
-  const tabs: { id: Tab; label: string; path: string; count?: number }[] = [
-    {
-      id: "pages",
-      label: "Pagini",
-      path: PDP_MODULE.path,
-      count: pages.length,
-    },
-    {
-      id: "history",
-      label: "Istoric",
-      path: `${PDP_MODULE.path}/history`,
-      count: scans.length,
-    },
-    { id: "rules", label: "Ce verificăm", path: `${PDP_MODULE.path}/rules` },
-  ];
+  const counts: Partial<Record<PdpTab, number>> = {
+    pages: pages.length,
+    history: scans.length,
+  };
   return (
     <>
       <PageHeader
-        eyebrow="Modul · Disponibilitate"
         title={PDP_MODULE.title}
         description={PDP_MODULE.description}
       />
       <div className="tabs" role="tablist">
-        {tabs.map((t) => (
+        {pdpTabs.map((t) => (
           <button
             key={t.id}
             role="tab"
@@ -53,12 +45,15 @@ export function PdpModule({
             onClick={() => navigate(t.path)}
           >
             {t.label}
-            {t.count !== undefined && (
-              <span className="tab-count">{t.count}</span>
+            {counts[t.id] !== undefined && (
+              <span className="tab-count">{counts[t.id]}</span>
             )}
           </button>
         ))}
       </div>
+      {tab === "overview" && (
+        <PdpOverview scans={scans} settings={settings} navigate={navigate} />
+      )}
       {tab === "pages" && (
         <>
           <div className="metrics">
@@ -179,14 +174,9 @@ export function PdpModule({
           </Card>
         </>
       )}
-      {tab === "history" && (
-        <Card
-          title="Toate verificările"
-          description="Cele mai recente primele"
-          flush
-        >
-          <ScanList scans={scans} navigate={navigate} />
-        </Card>
+      {tab === "history" && <HistoryTab scans={scans} navigate={navigate} />}
+      {tab === "settings" && (
+        <SettingsPage settings={settings} onSave={onSaveSettings} />
       )}
       {tab === "rules" && (
         <div className="grid-2-1">

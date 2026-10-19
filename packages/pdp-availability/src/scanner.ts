@@ -15,17 +15,29 @@ import { sample } from "./sample.js";
 import { evaluate, overall } from "./rules.js";
 export const ENGINE_VERSION = "1.1.0";
 const MAX_ANALYSIS_FAILURES = 3;
+const PRIVATE_MASK = "input, textarea, [contenteditable], [data-private]";
+const EMAIL = /[^\s@]+@[^\s@]+\.[^\s@]+/;
+
+/** Optional live-progress hooks; none of them affects the evaluation. */
+export interface ScanProgressHooks {
+  /** Called when a stage of the scan starts. */
+  phase?: (phase: ScanPhase) => void;
+  /** Where to write a masked live preview of the page, taken once content appears. */
+  previewFile?: string;
+  /** Called after the live preview has been written. */
+  preview?: () => void;
+}
 export async function scanPage(
   url: string,
   settings: Settings,
   expectedActive: boolean,
   evidenceFile: string,
   policy = new NetworkPolicy(),
-  onPhase: (phase: ScanPhase) => void = () => {},
+  progress: ScanProgressHooks = {},
 ): Promise<Report> {
   const phase = (value: ScanPhase) => {
     try {
-      onPhase(value);
+      progress.phase?.(value);
     } catch {
       /* progress reporting must never affect the scan */
     }
@@ -217,6 +229,7 @@ export async function scanPage(
         phase("OBSERVING");
         const renderStart = navElapsed();
         let failures = 0;
+        let previewTaken = !progress.previewFile;
         while (
           !expired &&
           navElapsed() - renderStart <= settings.renderTimeoutMs + 250
@@ -226,6 +239,32 @@ export async function scanPage(
             o.samples.push(current);
             failures = 0;
             o.analysisError = null;
+            if (
+              !previewTaken &&
+              !current.blocked &&
+              !o.securityBlocked &&
+              !o.environmentError &&
+              (current.textChars > 0 || current.mediaElements > 0)
+            ) {
+              previewTaken = true;
+              try {
+                await mkdir(path.dirname(progress.previewFile!), {
+                  recursive: true,
+                });
+                await page.screenshot({
+                  path: progress.previewFile,
+                  type: "jpeg",
+                  quality: 60,
+                  fullPage: false,
+                  timeout: 1500,
+                  mask: [page.locator(PRIVATE_MASK), page.getByText(EMAIL)],
+                  maskColor: "#e2e8f0",
+                });
+                progress.preview?.();
+              } catch {
+                /* live preview is optional; evaluation continues */
+              }
+            }
             const tail = o.samples.slice(-3);
             const stable =
               tail.length === 3 &&
@@ -278,12 +317,7 @@ export async function scanPage(
             path: evidenceFile,
             fullPage: false,
             timeout: 2000,
-            mask: [
-              page.locator(
-                "input, textarea, [contenteditable], [data-private]",
-              ),
-              page.getByText(/[^\s@]+@[^\s@]+\.[^\s@]+/),
-            ],
+            mask: [page.locator(PRIVATE_MASK), page.getByText(EMAIL)],
             maskColor: "#e2e8f0",
           });
           o.screenshot = true;
