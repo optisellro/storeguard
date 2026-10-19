@@ -219,6 +219,9 @@ export async function scanPage(
           }),
         ),
       );
+      // Chromium reports subresources answered with 4xx/5xx as aborted requests;
+      // the HTTP status is only visible on the response event, so keep it here.
+      const statusOf = new WeakMap<import("playwright").Request, number>();
       page.on("requestfailed", (request) => {
         const failure = request.failure()?.errorText ?? "failed";
         record({
@@ -226,12 +229,13 @@ export async function scanPage(
           type: request.resourceType(),
           method: request.method(),
           ...timingOf(request),
-          status: null,
+          status: statusOf.get(request) ?? null,
           failure,
           scannerBlocked: /ERR_BLOCKED_BY_CLIENT/.test(failure),
         });
       });
       page.on("response", (response) => {
+        statusOf.set(response.request(), response.status());
         const type = response.request().resourceType();
         const length = Number(response.headers()["content-length"] ?? 0);
         if (
