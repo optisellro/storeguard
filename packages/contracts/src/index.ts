@@ -43,9 +43,31 @@ export const scanInputSchema = z.object({
 export type Settings = z.infer<typeof settingsSchema>;
 export const defaults = settingsSchema.parse({});
 export type Verdict =
-  "PASS" | "FAIL" | "WARNING" | "INCONCLUSIVE" | "NOT_APPLICABLE";
+  | "PASS"
+  | "FAIL"
+  | "WARNING"
+  | "INCONCLUSIVE"
+  | "NOT_APPLICABLE";
 export type ScanState =
-  "QUEUED" | "RUNNING" | "COMPLETED" | "BLOCKED" | "FAILED";
+  | "QUEUED"
+  | "RUNNING"
+  | "COMPLETED"
+  | "BLOCKED"
+  | "FAILED";
+/** Real progress of a running scan, emitted by the engine as each stage starts. */
+export type ScanPhase =
+  | "PREPARING"
+  | "NAVIGATING"
+  | "OBSERVING"
+  | "EVALUATING"
+  | "EVIDENCE";
+export const scanPhases: ScanPhase[] = [
+  "PREPARING",
+  "NAVIGATING",
+  "OBSERVING",
+  "EVALUATING",
+  "EVIDENCE",
+];
 export interface RuleResult {
   id: string;
   name: string;
@@ -86,6 +108,8 @@ export interface Observation {
   samples: Sample[];
   screenshot: boolean;
   selectorError: string | null;
+  /** Page analysis failure (absent in reports created before engine 1.1.0). */
+  analysisError?: string | null;
 }
 export interface Report {
   observation: Observation;
@@ -104,6 +128,8 @@ export interface Scan {
   settings: Settings;
   report: Report | null;
   error: string | null;
+  /** Current stage while RUNNING; absent for older records. */
+  phase?: ScanPhase | null;
 }
 export function redactUrl(value: string): string {
   try {

@@ -11,7 +11,10 @@ import {
   type Report,
   type Settings,
 } from "../../../packages/contracts/src/index.js";
-import { scanPage } from "../../../packages/pdp-availability/src/scanner.js";
+import {
+  scanPage,
+  ENGINE_VERSION,
+} from "../../../packages/pdp-availability/src/scanner.js";
 import { safeCause } from "../../../packages/pdp-availability/src/security.js";
 import { openDatabase } from "./database.js";
 import { ScanQueue } from "./queue.js";
@@ -50,7 +53,7 @@ export async function buildApp(options: AppOptions = {}) {
       .header("X-Content-Type-Options", "nosniff")
       .header("Cache-Control", "no-store");
   });
-  app.get("/api/health", () => ({ ok: true, engine: "1.0.0" }));
+  app.get("/api/health", () => ({ ok: true, engine: ENGINE_VERSION }));
   app.get("/api/scans", () => db.all());
   app.get<{ Params: { id: string } }>(
     "/api/scans/:id",
@@ -105,13 +108,15 @@ export async function buildApp(options: AppOptions = {}) {
         getDomain(target.hostname, { allowPrivateDomains: true }) ??
           target.hostname,
         async () => {
-          db.put({ ...scan, state: "RUNNING" });
+          db.put({ ...scan, state: "RUNNING", phase: "PREPARING" });
           try {
             const report: Report = await scanner(
               url,
               scan.settings,
               expectedActive,
               path.join(directory, "evidence", `${scan.id}.png`),
+              undefined,
+              (phase) => db.put({ ...scan, state: "RUNNING", phase }),
             );
             const state =
               report.observation.securityBlocked ||
@@ -123,6 +128,7 @@ export async function buildApp(options: AppOptions = {}) {
               ...scan,
               state,
               report,
+              phase: null,
               finishedAt: new Date().toISOString(),
             });
           } catch (error) {
