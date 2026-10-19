@@ -1,5 +1,25 @@
 # Rezultate de testare
 
+## Actualizare · 19 octombrie 2026 · motor 1.1.0 și interfața nouă
+
+Validare executată în **GitHub Actions** (Ubuntu, Node.js 24, Chromium instalat de Playwright), pe branch-ul `feat/redesign`:
+
+| Pas             | Rezultat                                                                                     |
+| --------------- | -------------------------------------------------------------------------------------------- |
+| `pnpm build`    | PASS (include `tsc --noEmit`)                                                                |
+| `pnpm test`     | PASS, inclusiv noul `tests/integration/runtime.test.ts`                                      |
+| `pnpm test:e2e` | PASS: shell, setări, verificare blocată, raport, module, meniu restrâns, mobil fără overflow |
+
+**Defect găsit și remediat:** aplicația rulează prin `node --import tsx`, care injectează `__name` în funcția de analiză trimisă către pagină. În browser, helperul nu există, deci fiecare observație eșua, iar paginile funcționale primeau „inconcludent”. Testul nou rulează scannerul exact prin `tsx` și a picat pe codul vechi (`samples = 0`) înainte de fix.
+
+**Verificare pe o pagină publică reală** (rulare unică din CI, `STOREGUARD_SCREENSHOT_URL`): `https://www.effectfashion.ro/sacouri-dama/2-82-5.html`. Rezultat: verdict PASS, 5 observații, conținut utilizabil la 1,96 s, HTTP 200, 7/7 reguli PASS. Înainte de fix, aceeași pagină avea zero observații și 4 reguli INCONCLUSIVE.
+
+Testul de capturi pe pagină reală (`tests/e2e/screens.spec.ts`) rulează doar când `STOREGUARD_SCREENSHOT_URL` este setat; capturile UI sunt urcate ca artefact `ui-screens`.
+
+---
+
+## Validarea inițială (motor 1.0.0)
+
 Data: **19 octombrie 2026**. Validarea a fost executată în mediul Linux de dezvoltare, cu **Node.js 24.19.0**, **pnpm 11.25.0**, **Playwright 1.64.1** și **Chromium 153.0.8010.0** instalat local.
 
 ## Comenzi și rezultate
