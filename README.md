@@ -2,7 +2,7 @@
 
 Platformă de monitorizare a magazinului online, construită pe module. Rulează momentan local. Primul modul implementat verifică **disponibilitatea și încărcarea paginilor de produs reale**. Introduci URL-ul, backendul deschide efectiv pagina cu Chromium, apoi salvează raportul și dovezile. Fără rezultate demonstrative în dashboard, fără plugin în magazin, fără AI, fără conturi de magazin.
 
-**Modul implementat:** `Pagini de produs · disponibilitate` (motor 1.1.0). Șapte reguli: OS-PDP-001, 002, 003, 004, 006, 009, 010. Nu sunt implementate testarea Add to Cart, variante, checkout, SEO, abonamente sau conturi multiple.
+**Modul implementat:** `Pagini de produs · disponibilitate` (motor 2.0.0). Șapte reguli: OS-PDP-001, 002, 003, 004, 006, 009, 010. Nu sunt implementate testarea Add to Cart, variante, checkout, SEO, abonamente sau conturi multiple.
 
 ## Cerințe
 
@@ -72,27 +72,24 @@ API-ul și frontendul ascultă exclusiv pe `127.0.0.1`. Porturile sunt fixe pent
 
 ## Interfața
 
-Sidebarul conține doar modulele implementate (`apps/web/src/app/navigation.ts`). Momentan: **Audit PDP**, cu tab-urile:
+- **Magazine:** fiecare magazin este un mediu separat. Paginile, verificările și problemele unui magazin nu se amestecă cu ale altuia; o pagină poate fi verificată doar în magazinul domeniului ei. Ștergerea unui magazin elimină toate datele lui.
+- **Sidebar:** selectorul de magazin, secțiunea **Module** (momentan **PDP – Pagina de produs**), Magazine și Setări scanare. Modulele noi se adaugă în `apps/web/src/app/navigation.ts` doar când sunt implementate.
+- **Dashboardul magazinului:** starea într-o propoziție, probleme deschise grupate (aceeași problemă pe mai multe pagini apare o singură dată, cu numărul de pagini afectate), Core Web Vitals mediane, verificări pe zi și evoluția LCP (doar când există cel puțin două măsurători).
+- **PDP – Diagnostic tehnic:** o singură pagină pentru o verificare: rezumat și număr de probleme, avertizări, verificări fără probleme, inconcludente și neexecutate; tab-uri pentru încărcare și performanță, JavaScript și rețea, browsere și regresii, experiența utilizatorilor, erori și corelări. Detaliile unei probleme se deschid într-un panou lateral; datele tehnice sunt pliate.
+- **Verificare în curs:** animație legată de fazele reale ale scannerului, peste o previzualizare mascată a paginii, ștearsă la final.
 
-- **Prezentare:** starea paginilor într-o propoziție, indicatori, grafice (verificări pe zi, timp până la produs vizibil), probleme active și verificări recente, calculate din verificările reale salvate local.
-- **Pagini:** fiecare pagină verificată, cu ultima stare și istoricul ei.
-- **Istoric:** toate verificările, filtrabile după rezultat.
-- **Ce verificăm:** cele 7 verificări, explicate.
-- **Setări:** timpi, praguri și semnale specifice magazinului.
+Statusul real al celor 32 de funcționalități, metoda de colectare și limitările: [docs/PDP-FEATURES.md](docs/PDP-FEATURES.md).
 
-**Raport:** verdict pe înțelesul clientului, problemele primele, „Ce poți face”, captură, cronologia încărcării și istoricul paginii; datele tehnice sunt pliate pentru echipa tehnică.
+## Prima verificare
 
-**Verificare în curs:** animația urmează fazele reale ale scannerului. Când pagina afișează conținut, scannerul salvează o singură previzualizare JPEG mascată (câmpuri, zone `[data-private]`, emailuri), afișată în animație. Previzualizarea este servită doar cât rulează verificarea și este ștearsă la final.
+1. Deschide interfața, apasă **Magazine** și creează un magazin (nume și domeniu, de exemplu `magazin.ro`).
+2. În **Adaugă prima pagină de produs**, introdu adresa publică a unui produs de pe acel domeniu (`https://...`). Adresele locale/private și porturile nestandard sunt blocate.
+3. **Produsul ar trebui să fie activ** este bifat implicit: un răspuns 404/410 este raportat ca problemă.
+4. Apasă **Pornește verificarea**. Progresul este afișat în timp real, apoi se deschide diagnosticul.
 
-## Prima pagină reală
+**Setări scanare** permite configurarea timpilor, pragului de încărcare lentă, ferestrei de observare după afișare, limitei de redirecționări, selectorilor CSS, mesajelor specifice și destinației așteptate. Se aplică tuturor magazinelor, pentru verificările viitoare.
 
-1. Deschide interfața (se deschide pe **Audit PDP**) și apasă **Verificare nouă**.
-2. Introdu adresa publică exactă a produsului tău (`https://...`). Adresele locale/private și porturile nestandard sunt blocate.
-3. **Produsul ar trebui să fie activ** este bifat implicit: un răspuns 404/410 este raportat ca problemă. Debifează pentru produse retrase intenționat (atunci 404/410 generează doar „Atenție”).
-4. Apasă **Pornește verificarea**. Progresul este afișat în timp real, apoi raportul apare automat.
-5. Deschide un rând din raport pentru recomandare și detalii tehnice.
-
-Tab-ul **Setări** din Audit PDP permite configurarea timpilor, pragului de încărcare lentă, limitei de redirecționări, selectorilor CSS, mesajelor specifice și destinației așteptate. Sunt salvate pentru verificările viitoare. Un selector CSS invalid produce „Neverificat” în raport, nu „Funcționează”.
+La prima pornire după actualizare, migrarea `002-stores` șterge verificările vechi (fără magazin) și capturile lor.
 
 ## Timpi și interpretare
 
