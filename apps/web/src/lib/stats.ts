@@ -90,3 +90,85 @@ export function average(values: number[]): number | null {
     ? values.reduce((sum, v) => sum + v, 0) / values.length
     : null;
 }
+
+import type { Finding } from "../../../../packages/contracts/src/index";
+import { issuesOf } from "./report";
+
+export function median(values: (number | null | undefined)[]): number | null {
+  const v = values
+    .filter((x): x is number => typeof x === "number")
+    .sort((a, b) => a - b);
+  if (!v.length) return null;
+  const mid = Math.floor(v.length / 2);
+  return v.length % 2 ? v[mid] : (v[mid - 1] + v[mid]) / 2;
+}
+
+export interface StoreIssue {
+  key: string;
+  finding: Finding;
+  severity: Finding["severity"];
+  /** Pages whose latest check shows this issue. */
+  pages: { url: string; scanId: string }[];
+  occurrences: number;
+  firstSeen: string;
+}
+
+/** Open issues of a store: the latest check of each page, grouped by fingerprint. */
+export function storeIssues(scans: Scan[]): StoreIssue[] {
+  const latest = latestPerPage(scans);
+  const groups = new Map<string, StoreIssue>();
+  for (const scan of latest)
+    for (const f of issuesOf(scan)) {
+      const g = groups.get(f.key) ?? {
+        key: f.key,
+        finding: f,
+        severity: f.severity,
+        pages: [],
+        occurrences: 0,
+        firstSeen: scan.createdAt,
+      };
+      g.pages.push({ url: scan.url, scanId: scan.id });
+      g.occurrences += f.count;
+      if (f.severity === "problem") g.severity = "problem";
+      groups.set(f.key, g);
+    }
+  for (const g of groups.values())
+    for (const scan of scans)
+      if (
+        scan.createdAt < g.firstSeen &&
+        issuesOf(scan).some((f) => f.key === g.key)
+      )
+        g.firstSeen = scan.createdAt;
+  return [...groups.values()].sort((a, b) =>
+    a.severity === b.severity
+      ? b.pages.length - a.pages.length || b.occurrences - a.occurrences
+      : a.severity === "problem"
+        ? -1
+        : 1,
+  );
+}
+
+export interface SeriesPoint {
+  id: string;
+  at: string;
+  url: string;
+  value: number;
+}
+
+/** A diagnostics metric over the most recent checks, oldest first. */
+export function metricSeries(
+  scans: Scan[],
+  pick: (s: Scan) => number | null | undefined,
+  limit = 30,
+): SeriesPoint[] {
+  return scans
+    .filter((s) => typeof pick(s) === "number")
+    .slice(0, limit)
+    .map((s) => ({
+      id: s.id,
+      at: s.createdAt,
+      url: s.url,
+      value: pick(s) as number,
+    }))
+    .reverse();
+}

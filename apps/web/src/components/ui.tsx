@@ -6,9 +6,10 @@ import {
   Minus,
   HelpCircle,
   LoaderCircle,
+  Ban,
   type LucideIcon,
 } from "lucide-react";
-import { healthLabel, type Health } from "../lib/report";
+import { shortLabel, type Health } from "../lib/report";
 
 const healthIcon: Record<Health, LucideIcon> = {
   ok: Check,
@@ -16,6 +17,7 @@ const healthIcon: Record<Health, LucideIcon> = {
   warn: AlertTriangle,
   unknown: HelpCircle,
   na: Minus,
+  off: Ban,
   running: LoaderCircle,
 };
 
@@ -52,7 +54,7 @@ export function StatusPill({
   return (
     <span className={`pill h-${health}`}>
       <span className="pill-dot" />
-      {label ?? healthLabel[health]}
+      {label ?? shortLabel[health]}
     </span>
   );
 }

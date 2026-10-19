@@ -1,4 +1,6 @@
 import type {
+  FeatureStatus,
+  Finding,
   Observation,
   RuleResult,
   Scan,
@@ -8,7 +10,14 @@ import type {
 import { plural, seconds } from "./format";
 
 /** Client-facing status. Technical verdicts stay available in developer details. */
-export type Health = "ok" | "warn" | "fail" | "unknown" | "na" | "running";
+export type Health =
+  | "ok"
+  | "warn"
+  | "fail"
+  | "unknown"
+  | "na"
+  | "off"
+  | "running";
 
 export const healthOf = (verdict: Verdict): Health =>
   verdict === "PASS"
@@ -22,19 +31,96 @@ export const healthOf = (verdict: Verdict): Health =>
           : "unknown";
 
 export const healthLabel: Record<Health, string> = {
-  ok: "Funcționează",
-  warn: "Atenție",
-  fail: "Problemă",
-  unknown: "Neverificat",
-  na: "Nu se aplică",
+  ok: "Fără probleme detectate",
+  warn: "Avertizare",
+  fail: "Problemă confirmată",
+  unknown: "Verificare inconcludentă",
+  na: "Neverificat",
+  off: "Indisponibil",
   running: "În verificare",
 };
+/** Short labels for compact places (pills in tables, chart legends). */
+export const shortLabel: Record<Health, string> = {
+  ok: "Fără probleme",
+  warn: "Avertizare",
+  fail: "Problemă",
+  unknown: "Inconcludent",
+  na: "Neverificat",
+  off: "Indisponibil",
+  running: "În verificare",
+};
+export const featureHealth = (s: FeatureStatus): Health =>
+  s === "fail"
+    ? "fail"
+    : s === "warn"
+      ? "warn"
+      : s === "ok"
+        ? "ok"
+        : s === "unknown"
+          ? "unknown"
+          : s === "not_run"
+            ? "na"
+            : "off";
 
-/** Health of a whole scan record, including scans that never produced a report. */
+/** Health of a whole scan: availability rules and technical diagnostics together. */
 export function scanHealth(scan: Scan): Health {
   if (scan.state === "QUEUED" || scan.state === "RUNNING") return "running";
   if (!scan.report) return "unknown";
-  return healthOf(scan.report.verdict);
+  const issues = issuesOf(scan);
+  if (issues.some((i) => i.severity === "problem")) return "fail";
+  if (issues.some((i) => i.severity === "warning")) return "warn";
+  const base = healthOf(scan.report.verdict);
+  return base === "na" ? "unknown" : base;
+}
+
+/** Feature group of each availability rule, for the unified issue list. */
+const ruleFeature: Record<string, string> = {
+  "OS-PDP-001": "01",
+  "OS-PDP-002": "01",
+  "OS-PDP-006": "01",
+  "OS-PDP-009": "01",
+  "OS-PDP-003": "02",
+  "OS-PDP-004": "02",
+  "OS-PDP-010": "03",
+};
+
+/** Every issue of a scan, availability rules and diagnostics, worst first. */
+export function issuesOf(scan: Scan): Finding[] {
+  const r = scan.report;
+  if (!r) return [];
+  const fromRules: Finding[] = r.rules
+    .map((rule) => ({
+      rule,
+      info: explainRule(rule, r.observation, scan.settings),
+    }))
+    .filter(({ info }) => info.health === "fail" || info.health === "warn")
+    .map(
+      ({ rule, info }): Finding => ({
+        key: `rule:${rule.id}`,
+        feature: ruleFeature[rule.id] ?? "01",
+        severity: info.health === "fail" ? "problem" : "warning",
+        title: info.title,
+        summary: info.summary,
+        action: info.action ?? "",
+        where: null,
+        atMs: null,
+        count: 1,
+        thirdParty: false,
+        source: null,
+        technical: {
+          rule: rule.id,
+          explanation: rule.explanation,
+          ...rule.technical,
+        },
+      }),
+    );
+  return [...fromRules, ...(r.diagnostics?.findings ?? [])].sort((a, b) =>
+    a.severity === b.severity
+      ? b.count - a.count
+      : a.severity === "problem"
+        ? -1
+        : 1,
+  );
 }
 
 export const ruleOrder: Health[] = ["fail", "warn", "unknown", "ok", "na"];

@@ -19,6 +19,7 @@ jobs:
       - run: pnpm test:e2e
         env:
           STOREGUARD_DATA_DIR: ${{ runner.temp }}/storeguard-e2e
+          STOREGUARD_SCREENSHOT_URL: https://www.effectfashion.ro/sacouri-dama/2-82-5.html
       - uses: actions/upload-artifact@v4
         if: always()
         with:

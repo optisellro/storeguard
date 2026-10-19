@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import type { DayBucket, LoadPoint } from "../lib/stats";
+import type { DayBucket, SeriesPoint } from "../lib/stats";
 import { dateTime, seconds, splitUrl } from "../lib/format";
-import { healthLabel, type Health } from "../lib/report";
+import { shortLabel, type Health } from "../lib/report";
 
 function useWidth<T extends HTMLElement>() {
   const ref = useRef<T>(null);
@@ -38,7 +38,7 @@ export function Legend({ items }: { items: Health[] }) {
       {items.map((h) => (
         <span key={h}>
           <span className={`swatch h-${h}`} />
-          {healthLabel[h]}
+          {shortLabel[h]}
         </span>
       ))}
     </div>
@@ -162,7 +162,7 @@ export function StackedBars({
               ({ key, health }) => (
                 <span key={key}>
                   <span className={`swatch h-${health}`} />
-                  {healthLabel[health]}
+                  {shortLabel[health]}
                   <b>{data[hover][key]}</b>
                 </span>
               ),
@@ -179,18 +179,19 @@ export function TrendLine({
   points,
   threshold,
   height = 168,
+  label = "Evoluția în verificările recente",
 }: {
-  points: LoadPoint[];
+  points: SeriesPoint[];
   threshold: number;
   height?: number;
+  label?: string;
 }) {
   const [ref, width] = useWidth<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
   const pad = { top: 10, right: 8, bottom: 22, left: 34 };
   const maxMs =
-    niceMax(
-      Math.max(threshold * 1.15, ...points.map((p) => p.usableMs)) / 1000,
-    ) * 1000;
+    niceMax(Math.max(threshold * 1.15, ...points.map((p) => p.value)) / 1000) *
+    1000;
   const plotW = Math.max(0, width - pad.left - pad.right);
   const plotH = height - pad.top - pad.bottom;
   const x = (i: number) =>
@@ -199,8 +200,7 @@ export function TrendLine({
   const y = (ms: number) => pad.top + plotH - (ms / maxMs) * plotH;
   const path = points
     .map(
-      (p, i) =>
-        `${i ? "L" : "M"}${x(i).toFixed(1)},${y(p.usableMs).toFixed(1)}`,
+      (p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(p.value).toFixed(1)}`,
     )
     .join(" ");
   const area =
@@ -215,7 +215,7 @@ export function TrendLine({
           width={width}
           height={height}
           role="img"
-          aria-label="Timpul până la conținut vizibil în verificările recente"
+          aria-label={label}
           onMouseLeave={() => setHover(null)}
           onMouseMove={(e) => {
             if (!points.length) return;
@@ -276,9 +276,9 @@ export function TrendLine({
           {points.map((p, i) => (
             <circle
               key={p.id}
-              className={`point h-${p.usableMs > threshold ? "warn" : "ok"}`}
+              className={`point h-${p.value > threshold ? "warn" : "ok"}`}
               cx={x(i)}
-              cy={y(p.usableMs)}
+              cy={y(p.value)}
               r={hover === i ? 4.5 : 3}
             />
           ))}
@@ -289,7 +289,7 @@ export function TrendLine({
           className="tooltip"
           style={{ left: Math.min(width - 190, Math.max(0, x(hover) - 95)) }}
         >
-          <strong>{seconds(points[hover].usableMs)}</strong>
+          <strong>{seconds(points[hover].value)}</strong>
           <span>
             {splitUrl(points[hover].url).host}
             {splitUrl(points[hover].url).path}
@@ -325,7 +325,7 @@ export function ProportionBar({
               key={h}
               className={`h-${h}`}
               style={{ flexGrow: counts[h] }}
-              title={`${healthLabel[h]}: ${counts[h]}`}
+              title={`${shortLabel[h]}: ${counts[h]}`}
             />
           ))
       )}
@@ -412,7 +412,7 @@ export function ResultStrip({
         <span
           key={item.id}
           className={`strip-cell h-${item.health}`}
-          title={`${dateTime(item.at)} · ${healthLabel[item.health]}`}
+          title={`${dateTime(item.at)} · ${shortLabel[item.health]}`}
         />
       ))}
     </div>

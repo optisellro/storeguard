@@ -3,16 +3,93 @@ import { test, expect, type Page } from "@playwright/test";
 const shot = (page: Page, name: string) =>
   page.screenshot({ path: `test-results/screens/${name}.png`, fullPage: true });
 
-test("Audit PDP: tab-uri, setări, verificare blocată și raport pe înțeles", async ({
+test("magazine izolate, diagnostic tehnic pe o pagină și setări", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Audit PDP" })).toBeVisible();
-  await expect(page.locator(".side-nav .nav")).toHaveCount(1);
-  await shot(page, "01-pdp-empty");
+  await expect(
+    page.getByRole("heading", { name: "Magazine", exact: true }),
+  ).toBeVisible();
 
-  await page.getByRole("tab", { name: "Setări" }).click();
+  // Two separate environments.
+  for (const [name, domain] of [
+    ["Magazin Test", "127.0.0.1"],
+    ["Alt magazin", "alt-magazin.ro"],
+  ]) {
+    await page.goto("/#/stores");
+    await page.getByLabel("Numele magazinului").fill(name);
+    await page.getByLabel("Domeniu").fill(domain);
+    await page.getByRole("button", { name: "Creează magazinul" }).click();
+    await expect(
+      page.getByRole("heading", { name, exact: true }),
+    ).toBeVisible();
+  }
+  await shot(page, "01-store-empty");
+
+  // A page of another domain is refused for this store.
+  await page
+    .getByLabel("Adresa paginii de produs")
+    .fill("https://altceva.ro/produs");
+  await page.getByRole("button", { name: "Pornește verificarea" }).click();
+  await expect(page.getByRole("alert")).toContainText(
+    "nu aparține magazinului",
+  );
+
+  // Switch to the first store and check a page there.
+  await page.getByRole("button", { name: "Alege magazinul" }).click();
+  await page.getByRole("menuitem", { name: /Magazin Test/ }).click();
+  await expect(
+    page.getByRole("heading", { name: "Magazin Test", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByLabel("Adresa paginii de produs")
+    .fill("http://127.0.0.1:59999/test?token=secret");
+  await page.getByRole("button", { name: "Pornește verificarea" }).click();
+  await expect(
+    page.getByRole("tab", { name: "JavaScript și rețea" }),
+  ).toBeVisible({ timeout: 20000 });
+  await expect(
+    page.getByRole("heading", { name: "Nu am putut verifica pagina" }),
+  ).toBeVisible();
+  await expect(page.locator(".report-url")).not.toContainText("secret");
+  await shot(page, "02-diagnostic-blocked");
+  for (const name of [
+    "Încărcare și performanță",
+    "JavaScript și rețea",
+    "Browsere și regresii",
+    "Experiența utilizatorilor",
+    "Erori și corelări",
+  ]) {
+    await page.getByRole("tab", { name }).click();
+    await expect(
+      page.getByRole("heading", { name: "Verificări din această secțiune" }),
+    ).toBeVisible();
+  }
+  await page.getByRole("tab", { name: "Experiența utilizatorilor" }).click();
+  await expect(
+    page.getByRole("heading", {
+      name: "Necesită scriptul StoreGuard instalat în magazin",
+    }),
+  ).toBeVisible();
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: "Nu am putut verifica pagina" }),
+  ).toBeVisible();
+
+  // The other store has no scans: results never mix.
+  await page.getByRole("button", { name: "Alege magazinul" }).click();
+  await page.getByRole("menuitem", { name: /Alt magazin/ }).click();
+  await expect(
+    page.getByRole("heading", { name: "Adaugă prima pagină de produs" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Alege magazinul" }).click();
+  await page.getByRole("menuitem", { name: /Magazin Test/ }).click();
+  await page.getByRole("tab", { name: /Istoric/ }).click();
+  await expect(page.locator(".table .row-link")).toHaveCount(1);
+
+  // Settings.
+  await page.getByRole("button", { name: "Setări scanare" }).click();
   await expect(page.getByLabel("Timp maxim de răspuns al paginii")).toHaveValue(
     "15000",
   );
@@ -21,37 +98,9 @@ test("Audit PDP: tab-uri, setări, verificare blocată și raport pe înțeles",
     "Setările au fost salvate.",
   );
 
-  await page.getByRole("button", { name: "Verificare nouă" }).first().click();
-  await page
-    .getByLabel("Adresa paginii de produs")
-    .fill("http://127.0.0.1:59999/test?token=secret");
-  await page
-    .getByRole("button", { name: "Pornește verificarea", exact: true })
-    .click();
-  await expect(
-    page.getByRole("heading", { name: "Verificări efectuate" }),
-  ).toBeVisible({ timeout: 15000 });
-  await expect(
-    page.getByRole("heading", { name: "Nu am putut verifica pagina" }),
-  ).toBeVisible();
-  await expect(page.locator(".report-url")).not.toContainText("secret");
-  await expect(page.locator(".check-row")).toHaveCount(7);
-  await shot(page, "02-report-blocked");
-  await page.reload();
-  await expect(page.locator(".check-row")).toHaveCount(7);
-
-  await page.getByRole("button", { name: "Audit PDP" }).first().click();
-  await page.getByRole("tab", { name: /Istoric/ }).click();
-  await expect(page.locator(".table .row-link")).toHaveCount(1);
-  await page.getByRole("tab", { name: "Ce verificăm" }).click();
-  await expect(
-    page.getByText("Viteza de afișare", { exact: true }),
-  ).toBeVisible();
-
+  // Collapsible sidebar.
   await page.getByRole("button", { name: "Restrânge meniul" }).click();
   await expect(page.locator(".sidebar.is-collapsed")).toBeVisible();
-  await page.getByRole("tab", { name: "Prezentare" }).click();
-  await shot(page, "03-pdp-overview-collapsed");
   await page.getByRole("button", { name: "Extinde meniul" }).click();
   await expect(page.locator(".sidebar.is-collapsed")).toHaveCount(0);
 });

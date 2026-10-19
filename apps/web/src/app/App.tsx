@@ -6,37 +6,58 @@ import {
   type Settings,
 } from "../../../../packages/contracts/src/index";
 import { Sidebar } from "../components/Sidebar";
+import { PageHeader } from "../components/ui";
 import { api } from "../lib/api";
-import { PDP_MODULE, pdpTabs, type PdpTab } from "./navigation";
-import { PdpModule } from "../pages/PdpModule";
-import { NewScan } from "../pages/NewScan";
-import { Report } from "../pages/Report";
+import { StoreDashboard, type StoreTab } from "../pages/StoreDashboard";
+import { Diagnostic } from "../pages/Diagnostic";
+import { Stores, type StoreWithSummary } from "../pages/Stores";
+import { SettingsPage } from "../pages/SettingsPage";
 
 const SIDEBAR_KEY = "storeguard.sidebarCollapsed";
-
+const LAST_STORE_KEY = "storeguard.lastStore";
 const readRoute = () => location.hash.slice(1) || "/";
+const remember = (key: string, value: string) => {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    /* storage unavailable */
+  }
+};
+const recall = (key: string) => {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
 
-/** Audit PDP tab for a route; null for routes outside the module tabs. */
-function pdpTab(route: string): PdpTab | null {
-  if (route === "/") return "overview";
-  return pdpTabs.find((t) => t.path === route)?.id ?? null;
+/** /s/<store>[/pages|/history|/scan/<id>] */
+function parse(route: string) {
+  const m = route.match(
+    /^\/s\/([0-9a-f-]{36})(?:\/(pages|history|scan\/([0-9a-f-]{36})))?$/,
+  );
+  if (!m) return null;
+  return {
+    storeId: m[1],
+    tab: (m[2] === "pages" || m[2] === "history"
+      ? m[2]
+      : "overview") as StoreTab,
+    scanId: m[3] ?? null,
+  };
 }
 
 export function App() {
   const [route, setRoute] = useState(readRoute);
-  const [scans, setScans] = useState<Scan[]>([]);
+  const [stores, setStores] = useState<StoreWithSummary[]>([]);
+  const [storesLoaded, setStoresLoaded] = useState(false);
+  const [scans, setScans] = useState<{ storeId: string; list: Scan[] } | null>(
+    null,
+  );
   const [settings, setSettings] = useState<Settings>(defaults);
   const [error, setError] = useState("");
-  const [loaded, setLoaded] = useState(false);
   const [online, setOnline] = useState<boolean | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(() => {
-    try {
-      return localStorage.getItem(SIDEBAR_KEY) === "1";
-    } catch {
-      return false;
-    }
-  });
+  const [collapsed, setCollapsed] = useState(() => recall(SIDEBAR_KEY) === "1");
 
   const navigate = (path: string) => {
     location.hash = path;
@@ -44,13 +65,17 @@ export function App() {
   };
   const toggle = () =>
     setCollapsed((value) => {
-      try {
-        localStorage.setItem(SIDEBAR_KEY, value ? "0" : "1");
-      } catch {
-        /* storage unavailable */
-      }
+      remember(SIDEBAR_KEY, value ? "0" : "1");
       return !value;
     });
+  const loadStores = () =>
+    api<StoreWithSummary[]>("/stores")
+      .then((list) => {
+        setStores(list);
+        setStoresLoaded(true);
+        setError("");
+      })
+      .catch((e) => setError((e as Error).message));
 
   useEffect(() => {
     const listener = () => {
@@ -63,82 +88,132 @@ export function App() {
 
   useEffect(() => {
     let active = true;
-    const refresh = async () => {
-      try {
-        const data = await api<Scan[]>("/scans");
-        if (!active) return;
-        setScans(data);
-        setLoaded(true);
-        setError("");
-      } catch (e) {
-        if (active) setError((e as Error).message);
-      }
-    };
     const health = () =>
       api<{ ok: boolean }>("/health")
         .then((h) => active && setOnline(h.ok))
         .catch(() => active && setOnline(false));
-    void refresh();
+    void loadStores();
     void health();
-    const scanTimer = setInterval(refresh, 1500);
-    const healthTimer = setInterval(health, 15000);
     void api<Settings>("/settings")
       .then((s) => active && setSettings(s))
       .catch(() => {});
+    const storesTimer = setInterval(loadStores, 5000);
+    const healthTimer = setInterval(health, 15000);
     return () => {
       active = false;
-      clearInterval(scanTimer);
+      clearInterval(storesTimer);
       clearInterval(healthTimer);
     };
   }, []);
 
-  const onCreated = (scan: Scan) =>
-    setScans((current) => [scan, ...current.filter((s) => s.id !== scan.id)]);
+  const parsed = parse(route);
+  const storeId = parsed?.storeId ?? null;
+  const store = stores.find((s) => s.id === storeId) ?? null;
 
-  const tab = pdpTab(route);
-  const leaf =
-    route === "/new"
-      ? "Verificare nouă"
-      : route.startsWith("/scan/")
-        ? "Raport"
-        : (pdpTabs.find((t) => t.id === tab)?.label ?? "Prezentare");
+  // Scans are always loaded per store, so results of different stores never mix.
+  useEffect(() => {
+    if (!storeId) return;
+    remember(LAST_STORE_KEY, storeId);
+    let active = true;
+    const refresh = () =>
+      api<Scan[]>(`/stores/${storeId}/scans`)
+        .then((list) => active && setScans({ storeId, list }))
+        .catch((e) => active && setError((e as Error).message));
+    void refresh();
+    const timer = setInterval(refresh, 1500);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [storeId]);
+
+  // "/" opens the last used store, or the store list.
+  useEffect(() => {
+    if (route !== "/" || !storesLoaded) return;
+    const last = recall(LAST_STORE_KEY);
+    const target = stores.find((s) => s.id === last) ?? stores[0];
+    navigate(target ? `/s/${target.id}` : "/stores");
+  }, [route, storesLoaded, stores]);
+
+  const onCreated = (scan: Scan) =>
+    setScans((current) =>
+      current && current.storeId === scan.storeId
+        ? {
+            storeId: current.storeId,
+            list: [scan, ...current.list.filter((s) => s.id !== scan.id)],
+          }
+        : current,
+    );
+  const storeScans = scans && scans.storeId === storeId ? scans.list : null;
 
   let page: ReactNode;
-  if (!loaded && !error)
+  let leaf = "";
+  if (!storesLoaded && !error)
     page = (
       <div className="loading">
         <LoaderCircle size={16} className="spin" /> Se încarcă datele…
       </div>
     );
-  else if (route === "/new")
-    page = <NewScan navigate={navigate} onCreated={onCreated} />;
-  else if (route.startsWith("/scan/")) {
-    const scan = scans.find((s) => s.id === route.split("/")[2]);
-    page = scan ? (
-      <Report
-        scan={scan}
-        scans={scans}
+  else if (route === "/stores") {
+    leaf = "Magazine";
+    page = (
+      <Stores stores={stores} navigate={navigate} onChanged={loadStores} />
+    );
+  } else if (route === "/settings") {
+    leaf = "Setări scanare";
+    page = (
+      <>
+        <PageHeader
+          title="Setări scanare"
+          description="Pragurile și semnalele folosite de verificări. Se aplică tuturor magazinelor, pentru verificările viitoare."
+        />
+        <SettingsPage settings={settings} onSave={setSettings} />
+      </>
+    );
+  } else if (parsed && !store)
+    page = <div className="loading">Magazinul nu există sau a fost șters.</div>;
+  else if (parsed && store && !storeScans)
+    page = (
+      <div className="loading">
+        <LoaderCircle size={16} className="spin" /> Se încarcă verificările
+        magazinului…
+      </div>
+    );
+  else if (parsed && store && storeScans) {
+    leaf = parsed.scanId
+      ? "Diagnostic tehnic"
+      : parsed.tab === "pages"
+        ? "Pagini"
+        : parsed.tab === "history"
+          ? "Istoric"
+          : "Prezentare";
+    page = parsed.scanId ? (
+      <Diagnostic
+        scanId={parsed.scanId}
+        store={store}
+        history={storeScans}
         navigate={navigate}
         onCreated={onCreated}
       />
     ) : (
-      <div className="loading">Verificarea nu a fost găsită.</div>
-    );
-  } else
-    page = (
-      <PdpModule
-        tab={tab ?? "overview"}
-        scans={scans}
+      <StoreDashboard
+        store={store}
+        scans={storeScans}
+        tab={parsed.tab}
         settings={settings}
-        onSaveSettings={setSettings}
         navigate={navigate}
+        onCreated={onCreated}
       />
     );
+  } else page = <div className="loading">Pagina nu există.</div>;
 
   return (
     <div className={`app${collapsed ? " collapsed" : ""}`}>
       <Sidebar
-        active={PDP_MODULE.id}
+        stores={stores}
+        store={store}
+        activeModule={parsed ? "pdp" : null}
+        route={route}
         collapsed={collapsed}
         mobileOpen={mobileOpen}
         scannerOnline={online}
@@ -159,20 +234,28 @@ export function App() {
             <Menu size={16} />
           </button>
           <nav className="crumbs" aria-label="Locație">
-            <button
-              className="crumb-link"
-              onClick={() => navigate(PDP_MODULE.path)}
-            >
-              {PDP_MODULE.label}
-            </button>
-            <span className="sep">/</span>
-            <strong>{leaf}</strong>
+            {store && parsed ? (
+              <>
+                <button
+                  className="crumb-link"
+                  onClick={() => navigate(`/s/${store.id}`)}
+                >
+                  {store.name}
+                </button>
+                <span className="sep">/</span>
+                <span>PDP – Pagina de produs</span>
+                <span className="sep">/</span>
+                <strong>{leaf}</strong>
+              </>
+            ) : (
+              <strong>{leaf || "StoreGuard"}</strong>
+            )}
           </nav>
           <div className="topbar-right">
-            {route !== "/new" && (
+            {store && parsed && (
               <button
                 className="btn primary sm"
-                onClick={() => navigate("/new")}
+                onClick={() => navigate(`/s/${store.id}/pages`)}
               >
                 <Plus size={13} />
                 <span className="hide-sm">Verificare nouă</span>

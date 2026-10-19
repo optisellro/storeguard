@@ -8,6 +8,18 @@ import { NetworkPolicy } from "../../packages/pdp-availability/src/security.js";
 import { buildApp } from "../../apps/api/src/app.js";
 import { openDatabase } from "../../apps/api/src/database.js";
 import { ScanQueue } from "../../apps/api/src/queue.js";
+import { DatabaseSync } from "node:sqlite";
+
+type App = Awaited<ReturnType<typeof buildApp>>;
+const createStore = async (app: App, domain: string, name = "Magazin test") => {
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/stores",
+    payload: { name, domain },
+  });
+  expect(response.statusCode).toBe(201);
+  return response.json().id as string;
+};
 import {
   evaluate,
   overall,
@@ -22,12 +34,13 @@ describe("API, persistență și coadă", () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), "sg-api-"));
     const app = await buildApp({ directory: dir });
     try {
+      const storeId = await createStore(app, "example.com");
       expect(
         (
           await app.inject({
             method: "POST",
             url: "/api/scans",
-            payload: { url: "file:///etc/passwd" },
+            payload: { storeId, url: "file:///etc/passwd" },
           })
         ).statusCode,
       ).toBe(400);
@@ -36,7 +49,7 @@ describe("API, persistență și coadă", () => {
           await app.inject({
             method: "POST",
             url: "/api/scans",
-            payload: { url: "https://user:secret@example.com" },
+            payload: { storeId, url: "https://user:secret@example.com" },
           })
         ).statusCode,
       ).toBe(400);
@@ -52,7 +65,7 @@ describe("API, persistență și coadă", () => {
       expect(
         (
           await app.inject({
-            url: "/api/scans",
+            url: "/api/stores",
             headers: { host: "evil.example" },
           })
         ).statusCode,
@@ -60,7 +73,7 @@ describe("API, persistență și coadă", () => {
       expect(
         (
           await app.inject({
-            url: "/api/scans",
+            url: "/api/stores",
             headers: { origin: "https://evil.example" },
           })
         ).statusCode,
@@ -78,10 +91,11 @@ describe("API, persistență și coadă", () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), "sg-persist-"));
     let app = await buildApp({ directory: dir });
     try {
+      const storeId = await createStore(app, "127.0.0.1");
       const response = await app.inject({
         method: "POST",
         url: "/api/scans",
-        payload: { url: "http://127.0.0.1/private?token=secret" },
+        payload: { storeId, url: "http://127.0.0.1/private?token=secret" },
       });
       expect(response.statusCode).toBe(202);
       const id = response.json().id;
@@ -91,7 +105,9 @@ describe("API, persistență și coadă", () => {
       expect(scan.state).toBe("BLOCKED");
       expect(scan.url).not.toContain("secret");
       expect(scan.report.verdict).toBe("INCONCLUSIVE");
-      expect((await app.inject("/api/scans")).json()).toHaveLength(1);
+      expect(
+        (await app.inject(`/api/stores/${storeId}/scans`)).json(),
+      ).toHaveLength(1);
     } finally {
       await app.close();
       await rm(dir, { recursive: true, force: true });
@@ -112,10 +128,11 @@ describe("API, persistență și coadă", () => {
         ),
     });
     try {
+      const storeId = await createStore(app, "127.0.0.1");
       const response = await app.inject({
         method: "POST",
         url: "/api/scans",
-        payload: { url: fixture.origin + "/blank" },
+        payload: { storeId, url: fixture.origin + "/blank" },
       });
       const id = response.json().id;
       await app.close();
@@ -179,11 +196,12 @@ describe("API, persistență și coadă", () => {
       },
     });
     try {
+      const storeId = await createStore(app, "example.com");
       const id = (
         await app.inject({
           method: "POST",
           url: "/api/scans",
-          payload: { url: "https://example.com/produs" },
+          payload: { storeId, url: "https://example.com/produs" },
         })
       ).json().id;
       // Wait until the job has written the preview and flagged it on the scan.
@@ -233,6 +251,7 @@ describe("API, persistență și coadă", () => {
     let db = await openDatabase(dir);
     const scan: Scan = {
       id: "interrupted",
+      storeId: "00000000-0000-4000-8000-000000000001",
       url: "https://example.com/",
       expectedActive: false,
       state: "RUNNING",
@@ -275,5 +294,136 @@ describe("API, persistență și coadă", () => {
     expect(active).toContain("third");
     release.splice(0).forEach((fn) => fn());
     await queue.close();
+  });
+  it("magazine izolate: domeniu validat, scanări separate, duplicat refuzat, ștergere completă", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "sg-stores-"));
+    const app = await buildApp({
+      directory: dir,
+      scanner: async (url, settings, active) => {
+        const o: Observation = {
+          httpStatus: 200,
+          finalUrl: url,
+          redirects: [],
+          navigationMs: 1,
+          domContentLoadedMs: 1,
+          usableMs: null,
+          totalMs: 1,
+          navigationError: null,
+          environmentError: null,
+          securityBlocked: false,
+          blockedRequests: 0,
+          redirectError: null,
+          samples: [],
+          screenshot: false,
+          selectorError: null,
+          analysisError: null,
+        };
+        const rules = evaluate(o, settings, active);
+        return {
+          observation: o,
+          rules,
+          engineVersion: "t",
+          rulesVersion: "t",
+          verdict: overall(rules),
+        };
+      },
+    });
+    try {
+      const a = await createStore(
+        app,
+        "https://www.magazin-a.ro/",
+        "Magazin A",
+      );
+      const b = await createStore(app, "magazin-b.ro", "Magazin B");
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: "/api/stores",
+            payload: { name: "Dublură", domain: "magazin-a.ro" },
+          })
+        ).statusCode,
+      ).toBe(409);
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: "/api/stores",
+            payload: { name: "X", domain: "nu un domeniu" },
+          })
+        ).statusCode,
+      ).toBe(400);
+      const wrong = await app.inject({
+        method: "POST",
+        url: "/api/scans",
+        payload: { storeId: a, url: "https://magazin-b.ro/produs" },
+      });
+      expect(wrong.statusCode).toBe(400);
+      expect(wrong.json().error).toContain("Magazin A");
+      for (const [storeId, url] of [
+        [a, "https://www.magazin-a.ro/p1"],
+        [a, "https://shop.magazin-a.ro/p2"],
+        [b, "https://magazin-b.ro/p"],
+      ])
+        expect(
+          (
+            await app.inject({
+              method: "POST",
+              url: "/api/scans",
+              payload: { storeId, url },
+            })
+          ).statusCode,
+        ).toBe(202);
+      for (let i = 0; i < 100; i++) {
+        const all = [
+          ...(await app.inject(`/api/stores/${a}/scans`)).json(),
+          ...(await app.inject(`/api/stores/${b}/scans`)).json(),
+        ];
+        if (all.every((s: Scan) => s.state === "COMPLETED")) break;
+        await new Promise((r) => setTimeout(r, 10));
+      }
+      const scansA = (await app.inject(`/api/stores/${a}/scans`)).json();
+      expect(scansA).toHaveLength(2);
+      expect(scansA.every((s: Scan) => s.storeId === a)).toBe(true);
+      expect((await app.inject(`/api/stores/${b}/scans`)).json()).toHaveLength(
+        1,
+      );
+      const stores = (await app.inject("/api/stores")).json();
+      expect(stores.find((s: { id: string }) => s.id === a).summary.pages).toBe(
+        2,
+      );
+      expect(
+        (await app.inject({ method: "DELETE", url: `/api/stores/${a}` }))
+          .statusCode,
+      ).toBe(204);
+      expect((await app.inject(`/api/stores/${a}/scans`)).statusCode).toBe(404);
+      expect((await app.inject("/api/stores")).json()).toHaveLength(1);
+      expect((await app.inject(`/api/stores/${b}/scans`)).json()).toHaveLength(
+        1,
+      );
+    } finally {
+      await app.close();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+  it("migrarea la magazine elimină verificările vechi, fără magazin", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "sg-migrate-"));
+    const legacy = new DatabaseSync(path.join(dir, "storeguard.sqlite"));
+    legacy.exec(
+      "CREATE TABLE migrations(name TEXT PRIMARY KEY); INSERT INTO migrations VALUES ('001-initial'); CREATE TABLE scans(id TEXT PRIMARY KEY, data TEXT NOT NULL); CREATE TABLE settings(id INTEGER PRIMARY KEY CHECK(id=1), data TEXT NOT NULL);",
+    );
+    legacy
+      .prepare("INSERT INTO scans VALUES (?, ?)")
+      .run("old", JSON.stringify({ id: "old", state: "COMPLETED" }));
+    legacy.close();
+    const db = await openDatabase(dir);
+    try {
+      expect(db.all()).toEqual([]);
+      expect(db.get("old")).toBeNull();
+      expect(db.stores()).toEqual([]);
+    } finally {
+      db.close();
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

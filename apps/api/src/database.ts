@@ -2,7 +2,11 @@ import { DatabaseSync } from "node:sqlite";
 import { Umzug } from "umzug";
 import { mkdirSync, rmSync } from "node:fs";
 import path from "node:path";
-import type { Scan, Settings } from "../../../packages/contracts/src/index.js";
+import type {
+  Scan,
+  Settings,
+  Store,
+} from "../../../packages/contracts/src/index.js";
 import { defaults } from "../../../packages/contracts/src/index.js";
 export async function openDatabase(directory: string) {
   mkdirSync(directory, { recursive: true });
@@ -39,13 +43,29 @@ export async function openDatabase(directory: string) {
           throw new Error("Rollback distructiv dezactivat.");
         },
       },
+      {
+        // Stores isolate every scan. Earlier test scans had no store and are removed.
+        name: "002-stores",
+        up: async () => {
+          db.exec(
+            "DELETE FROM scans; ALTER TABLE scans ADD COLUMN store_id TEXT; CREATE INDEX IF NOT EXISTS scans_store ON scans(store_id); CREATE TABLE IF NOT EXISTS stores(id TEXT PRIMARY KEY, data TEXT NOT NULL);",
+          );
+          rmSync(path.join(directory, "evidence"), {
+            recursive: true,
+            force: true,
+          });
+        },
+        down: async () => {
+          throw new Error("Rollback distructiv dezactivat.");
+        },
+      },
     ],
   });
   await migrator.up();
   const put = (scan: Scan) => {
     db.prepare(
-      "INSERT INTO scans(id,data) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data",
-    ).run(scan.id, JSON.stringify(scan));
+      "INSERT INTO scans(id,store_id,data) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data, store_id=excluded.store_id",
+    ).run(scan.id, scan.storeId ?? null, JSON.stringify(scan));
   };
   const all = (): Scan[] =>
     (
@@ -72,9 +92,47 @@ export async function openDatabase(directory: string) {
       });
     }
   }
+  const parseAll = (rows: unknown[]) =>
+    (rows as { data: string }[]).map((row) => JSON.parse(row.data));
   return {
     put,
     all,
+    byStore: (storeId: string): Scan[] =>
+      parseAll(
+        db
+          .prepare(
+            "SELECT data FROM scans WHERE store_id=? ORDER BY rowid DESC",
+          )
+          .all(storeId),
+      ),
+    stores: (): Store[] =>
+      parseAll(db.prepare("SELECT data FROM stores ORDER BY rowid").all()),
+    store: (id: string): Store | null => {
+      const row = db.prepare("SELECT data FROM stores WHERE id=?").get(id) as
+        | { data: string }
+        | undefined;
+      return row ? JSON.parse(row.data) : null;
+    },
+    putStore: (store: Store) => {
+      db.prepare(
+        "INSERT INTO stores(id,data) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data",
+      ).run(store.id, JSON.stringify(store));
+    },
+    /** Removes the store, its scans and their evidence files. */
+    deleteStore: (id: string) => {
+      const ids = (
+        db.prepare("SELECT id FROM scans WHERE store_id=?").all(id) as {
+          id: string;
+        }[]
+      ).map((r) => r.id);
+      for (const scanId of ids)
+        for (const suffix of [".png", "-preview.jpg"])
+          rmSync(path.join(directory, "evidence", `${scanId}${suffix}`), {
+            force: true,
+          });
+      db.prepare("DELETE FROM scans WHERE store_id=?").run(id);
+      db.prepare("DELETE FROM stores WHERE id=?").run(id);
+    },
     get: (id: string): Scan | null => {
       const row = db.prepare("SELECT data FROM scans WHERE id=?").get(id) as
         | { data: string }
@@ -85,7 +143,8 @@ export async function openDatabase(directory: string) {
       const row = db.prepare("SELECT data FROM settings WHERE id=1").get() as
         | { data: string }
         | undefined;
-      return row ? JSON.parse(row.data) : defaults;
+      // Older saved settings may lack newer fields; defaults fill them in.
+      return row ? { ...defaults, ...JSON.parse(row.data) } : defaults;
     },
     saveSettings: (settings: Settings) => {
       db.prepare(
@@ -95,4 +154,4 @@ export async function openDatabase(directory: string) {
     close: () => db.close(),
   };
 }
-export type Store = Awaited<ReturnType<typeof openDatabase>>;
+export type Database = Awaited<ReturnType<typeof openDatabase>>;

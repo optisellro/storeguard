@@ -99,6 +99,55 @@ export async function fixtureServer() {
       res.setHeader("Content-Type", "application/json");
       return res.end("{}");
     }
+    /* Technical diagnostics fixtures: each page contains exactly one known defect. */
+    const withScript = (js: string) => html(product + `<script>${js}</script>`);
+    if (route === "/js-error")
+      return withScript(
+        "addEventListener('load',()=>{const product=undefined;product.price.toFixed(2);})",
+      );
+    if (route === "/rejection")
+      return withScript("Promise.reject(new Error('Stoc indisponibil'))");
+    if (route === "/console-error")
+      return withScript("console.error('Widget recenzii: configurare lipsă')");
+    if (route === "/api-fail")
+      return withScript("fetch('/api/stock').catch(()=>{})");
+    if (route === "/bad-json")
+      return withScript("fetch('/api/data').then((r)=>r.text())");
+    if (route === "/missing-assets")
+      return html(
+        '<link rel="stylesheet" href="/missing.css">' +
+          product +
+          '<script src="/missing.js"></script>',
+      );
+    if (route === "/long-task")
+      return withScript(
+        "setTimeout(()=>{const end=performance.now()+700;while(performance.now()<end){}},50)",
+      );
+    if (route === "/storm")
+      return withScript(
+        "let n=0;const next=()=>{if(n++<40)fetch('/ping?i='+n).finally(next)};next()",
+      );
+    if (route === "/hydration")
+      return withScript(
+        "console.error('Hydration failed because the initial UI does not match what was rendered on the server.')",
+      );
+    if (route === "/csp") {
+      res.setHeader("Content-Security-Policy", "script-src 'none'");
+      return withScript("document.title='inline'");
+    }
+    if (route === "/api/stock") {
+      res.statusCode = 503;
+      res.setHeader("Content-Type", "application/json");
+      return res.end('{"error":"unavailable"}');
+    }
+    if (route === "/api/data") {
+      res.setHeader("Content-Type", "application/json");
+      return res.end('{"price": 12,');
+    }
+    if (route.startsWith("/missing")) {
+      res.statusCode = 404;
+      return res.end("not found");
+    }
     return html(product);
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));

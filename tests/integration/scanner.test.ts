@@ -219,3 +219,86 @@ describe("Chromium real · pagini controlate", () => {
     expect(status(r, "OS-PDP-004")).toBe("INCONCLUSIVE");
   });
 });
+
+describe("Diagnostic tehnic · o singură vizită, pagini controlate", () => {
+  const diag = async (route: string) => {
+    const r = await scanPage(
+      fixture.origin + route,
+      { ...settings, renderTimeoutMs: 2500, settleMs: 900 },
+      true,
+      path.join(dir, "diag.png"),
+      new NetworkPolicy(fixture.origin),
+    );
+    return r.diagnostics!;
+  };
+  const feature = (d: Awaited<ReturnType<typeof diag>>, id: string) =>
+    d.features.find((f) => f.id === id)!;
+
+  it("pagină curată: nicio problemă, metrici măsurate, verificări sintetice fără probleme", async () => {
+    const d = await diag("/normal");
+    expect(d.findings).toEqual([]);
+    for (const id of [
+      "06",
+      "07",
+      "08",
+      "09",
+      "10",
+      "11",
+      "13",
+      "16",
+      "17",
+      "18",
+      "19",
+    ])
+      expect(feature(d, id).status).toBe("ok");
+    expect(d.metrics.fcp.value).toBeGreaterThan(0);
+    expect(d.metrics.lcp.value).toBeGreaterThan(0);
+    expect(d.metrics.ttfb.value).not.toBeNull();
+    expect(d.metrics.cls.value).not.toBeNull();
+    expect(d.metrics.inp.value).toBeNull();
+    expect(d.waterfall.some((w) => w.type === "document")).toBe(true);
+    expect(feature(d, "24").status).toBe("unavailable");
+    expect(feature(d, "21").status).toBe("not_run");
+  });
+  it.each([
+    ["/js-error", "06"],
+    ["/rejection", "07"],
+    ["/console-error", "08"],
+    ["/api-fail", "09"],
+    ["/bad-json", "10"],
+    ["/missing-assets", "11"],
+    ["/long-task", "14"],
+    ["/hydration", "16"],
+    ["/csp", "17"],
+    ["/storm", "18"],
+  ])("%s → problemă detectată la funcționalitatea %s", async (route, id) => {
+    const d = await diag(route);
+    const found = d.findings.filter((f) => f.feature === id);
+    expect(found.length).toBeGreaterThan(0);
+    expect(["fail", "warn"]).toContain(feature(d, id).status);
+    for (const f of found) {
+      expect(f.summary.length).toBeGreaterThan(20);
+      expect(f.action.length).toBeGreaterThan(10);
+    }
+  });
+  it("serviciu propriu căzut (503) este problemă confirmată, nu doar avertizare", async () => {
+    const d = await diag("/api-fail");
+    expect(d.findings.find((f) => f.feature === "09")?.severity).toBe(
+      "problem",
+    );
+  });
+  it("script și stil lipsă sunt grupate separat, fiecare o singură dată", async () => {
+    const d = await diag("/missing-assets");
+    expect(d.findings.filter((f) => f.feature === "11")).toHaveLength(2);
+  });
+  it("pagină blocată (CAPTCHA): verificările tehnice sunt inconcludente, fără probleme inventate", async () => {
+    const d = await diag("/captcha");
+    expect(d.findings).toEqual([]);
+    expect(feature(d, "06").status).toBe("unknown");
+  });
+  it("pagină cu eroare de server: diagnosticul tehnic nu se aplică", async () => {
+    const d = await diag("/500");
+    expect(d.findings).toEqual([]);
+    expect(feature(d, "06").status).toBe("not_run");
+  });
+});

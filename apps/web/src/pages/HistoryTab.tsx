@@ -7,17 +7,19 @@ import { scanHealth, type Health } from "../lib/report";
 const filters: { id: "all" | Health; label: string }[] = [
   { id: "all", label: "Toate" },
   { id: "fail", label: "Probleme" },
-  { id: "warn", label: "Atenție" },
-  { id: "unknown", label: "Neverificate" },
-  { id: "ok", label: "Funcționează" },
+  { id: "warn", label: "Avertizări" },
+  { id: "unknown", label: "Inconcludente" },
+  { id: "ok", label: "Fără probleme" },
 ];
 
 export function HistoryTab({
   scans,
   navigate,
+  base,
 }: {
   scans: Scan[];
   navigate: (p: string) => void;
+  base: string;
 }) {
   const [filter, setFilter] = useState<"all" | Health>("all");
   const shown =
@@ -49,6 +51,7 @@ export function HistoryTab({
         <ScanList
           scans={shown}
           navigate={navigate}
+          base={base}
           emptyText="Nicio verificare pentru acest filtru."
         />
       </Card>

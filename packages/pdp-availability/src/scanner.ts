@@ -13,7 +13,25 @@ import { NetworkPolicy, SecurityError, safeCause } from "./security.js";
 import { createEgressProxy } from "./proxy.js";
 import { sample } from "./sample.js";
 import { evaluate, overall } from "./rules.js";
-export const ENGINE_VERSION = "1.1.0";
+import {
+  INSTRUMENT_SCRIPT,
+  READ_SCRIPT,
+  type PageBuffers,
+} from "./instrument.js";
+import {
+  analyze,
+  type RawDiagnostics,
+  type RawRequest,
+} from "./diagnostics.js";
+export const ENGINE_VERSION = "2.0.0";
+const MAX_REQUESTS = 500;
+const URL_IN_TEXT = /https?:\/\/[^\s)'"]+/;
+/** Resolves to the fallback when the promise does not settle in time. */
+const within = <T>(promise: Promise<T>, ms: number, fallback: T) =>
+  Promise.race([
+    promise.catch(() => fallback),
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
+  ]);
 const MAX_ANALYSIS_FAILURES = 3;
 const PRIVATE_MASK = "input, textarea, [contenteditable], [data-private]";
 const EMAIL = /[^\s@]+@[^\s@]+\.[^\s@]+/;
@@ -62,7 +80,22 @@ export async function scanPage(
     selectorError: null,
     analysisError: null,
   };
-  let navStart = 0;
+  let navStart = 0,
+    navEpoch = 0;
+  const raw: RawDiagnostics = {
+    pageUrl: url,
+    requests: [],
+    console: [],
+    pageErrors: [],
+    invalidJson: [],
+    buffers: null,
+    settleMs: 0,
+  };
+  const pending = new Set<Promise<unknown>>();
+  const track = (p: Promise<unknown>) => {
+    pending.add(p);
+    void p.finally(() => pending.delete(p));
+  };
   const navElapsed = () => Math.round(performance.now() - navStart);
   const blockedOrigins = new Set<string>();
   let browser: Browser | undefined,
@@ -126,11 +159,104 @@ export async function scanPage(
         await browser.close();
         return;
       }
+      await context.addInitScript({ content: INSTRUMENT_SCRIPT });
       await context.routeWebSocket(/.*/, (socket) => {
         o.blockedRequests++;
         socket.close();
       });
       const page = await context.newPage();
+      /* One visit feeds every diagnostic: errors, console, network and timing. */
+      page.on("pageerror", (error) => {
+        if (raw.pageErrors.length >= 100) return;
+        raw.pageErrors.push({
+          t: navStart ? navElapsed() : 0,
+          name: error.name || "Error",
+          message: String(error.message).slice(0, 500),
+          source: error.stack?.match(URL_IN_TEXT)?.[0] ?? null,
+        });
+      });
+      page.on("console", (message) => {
+        const type = message.type();
+        if (
+          (type !== "error" && type !== "warning") ||
+          raw.console.length >= 200
+        )
+          return;
+        raw.console.push({
+          t: navStart ? navElapsed() : 0,
+          type: type === "error" ? "error" : "warning",
+          text: message.text().slice(0, 500),
+          url: message.location()?.url || null,
+        });
+      });
+      const record = (entry: RawRequest) => {
+        if (
+          raw.requests.length < MAX_REQUESTS &&
+          !entry.url.startsWith("data:")
+        )
+          raw.requests.push(entry);
+      };
+      const timingOf = (request: import("playwright").Request) => {
+        const t = request.timing();
+        return {
+          start: t.startTime > 0 && navEpoch ? t.startTime - navEpoch : null,
+          duration: t.responseEnd >= 0 ? t.responseEnd : null,
+        };
+      };
+      page.on("requestfinished", (request) =>
+        track(
+          within(request.response(), 2000, null).then((response) => {
+            record({
+              url: request.url(),
+              type: request.resourceType(),
+              method: request.method(),
+              ...timingOf(request),
+              status: response?.status() ?? null,
+              failure: null,
+              scannerBlocked:
+                response?.headers()["x-storeguard-proxy-error"] === "blocked",
+            });
+          }),
+        ),
+      );
+      page.on("requestfailed", (request) => {
+        const failure = request.failure()?.errorText ?? "failed";
+        record({
+          url: request.url(),
+          type: request.resourceType(),
+          method: request.method(),
+          ...timingOf(request),
+          status: null,
+          failure,
+          scannerBlocked: /ERR_BLOCKED_BY_CLIENT/.test(failure),
+        });
+      });
+      page.on("response", (response) => {
+        const type = response.request().resourceType();
+        const length = Number(response.headers()["content-length"] ?? 0);
+        if (
+          (type !== "xhr" && type !== "fetch") ||
+          response.status() < 200 ||
+          response.status() >= 300 ||
+          !/json/i.test(response.headers()["content-type"] ?? "") ||
+          length > 512000 ||
+          raw.invalidJson.length >= 20
+        )
+          return;
+        track(
+          within(response.text(), 2000, "").then((body) => {
+            if (!body.trim() || body.length > 512000) return;
+            try {
+              JSON.parse(body);
+            } catch {
+              raw.invalidJson.push({
+                url: response.url(),
+                status: response.status(),
+              });
+            }
+          }),
+        );
+      });
       let navRequests = 0;
       context.on("page", (popup) => {
         if (popup !== page) void popup.close();
@@ -213,6 +339,7 @@ export async function scanPage(
       });
       phase("NAVIGATING");
       navStart = performance.now();
+      navEpoch = Date.now();
       try {
         await page.goto(url, {
           waitUntil: "domcontentloaded",
@@ -295,6 +422,31 @@ export async function scanPage(
           await new Promise((resolve) => setTimeout(resolve, 250));
         }
       }
+      /* Keep observing briefly after the page is usable, for late errors and requests. */
+      const settle = Math.max(
+        0,
+        Math.min(
+          settings.settleMs ?? 3000,
+          settings.globalTimeoutMs - elapsed() - 2500,
+        ),
+      );
+      if (
+        !o.navigationError &&
+        !expired &&
+        o.usableMs !== null &&
+        !o.samples.at(-1)?.blocked &&
+        settle > 0
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, settle));
+        raw.settleMs = settle;
+      }
+      if (!expired && !page.isClosed())
+        raw.buffers = await within(
+          page.evaluate(READ_SCRIPT) as Promise<PageBuffers>,
+          1500,
+          null,
+        );
+      await within(Promise.allSettled([...pending]), 2000, []);
       const actualUrl = page.url();
       if (actualUrl.startsWith("http")) o.finalUrl = redactUrl(actualUrl);
       o.totalMs = elapsed();
@@ -365,5 +517,6 @@ export async function scanPage(
     engineVersion: ENGINE_VERSION,
     rulesVersion: "1.0.0",
     verdict: overall(rules),
+    diagnostics: analyze(raw, o, rules, settings),
   };
 }

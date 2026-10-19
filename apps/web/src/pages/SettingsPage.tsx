@@ -12,7 +12,8 @@ type NumKey =
   | "renderTimeoutMs"
   | "slowThresholdMs"
   | "globalTimeoutMs"
-  | "maxRedirects";
+  | "maxRedirects"
+  | "settleMs";
 type TextKey =
   | "loaderSelector"
   | "errorSelector"
@@ -58,6 +59,14 @@ const numberFields: {
     unit: "ms",
     min: 1000,
     max: 60000,
+  },
+  {
+    key: "settleMs",
+    label: "Observare după afișarea produsului",
+    help: "Cât mai urmărim pagina pentru erori și cereri apărute târziu.",
+    unit: "ms",
+    min: 0,
+    max: 15000,
   },
   {
     key: "maxRedirects",

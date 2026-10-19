@@ -1,24 +1,25 @@
 import { test, expect } from "@playwright/test";
 
-// Optional visual check against a real public product page. Runs only when
+// Optional check against a real public product page. Runs only when
 // STOREGUARD_SCREENSHOT_URL is set; it never replaces the controlled fixture tests.
 const target = process.env.STOREGUARD_SCREENSHOT_URL;
 
 test.skip(!target, "STOREGUARD_SCREENSHOT_URL nu este setat");
 
-test("capturi pe o pagină publică reală", async ({ page }) => {
-  test.setTimeout(120000);
+test("diagnostic tehnic pe o pagină publică reală", async ({ page }) => {
+  test.setTimeout(150000);
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto("/#/new");
+  const domain = new URL(target!).hostname.replace(/^www\./, "");
+  await page.goto("/#/stores");
+  await page.getByLabel("Numele magazinului").fill("Magazin real");
+  await page.getByLabel("Domeniu").fill(domain);
+  await page.getByRole("button", { name: "Creează magazinul" }).click();
   await page.getByLabel("Adresa paginii de produs").fill(target!);
-  await page
-    .getByRole("button", { name: "Pornește verificarea", exact: true })
-    .click();
-  await expect(page.locator(".scan-live")).toBeVisible({ timeout: 10000 });
-  // The scan may finish between two UI refreshes, so the preview is best-effort here.
+  await page.getByRole("button", { name: "Pornește verificarea" }).click();
+  // The scan may finish between two UI refreshes, so the preview is best-effort.
   const sawPreview = await page
     .locator(".browser-shot")
-    .waitFor({ timeout: 20000 })
+    .waitFor({ timeout: 25000 })
     .then(() => true)
     .catch(() => false);
   if (sawPreview)
@@ -26,33 +27,45 @@ test("capturi pe o pagină publică reală", async ({ page }) => {
       path: "test-results/screens/10-scan-progress.png",
     });
   await expect(
-    page.getByRole("heading", { name: "Verificări efectuate" }),
-  ).toBeVisible({
-    timeout: 70000,
-  });
-  const scans = await page.evaluate(() =>
-    fetch("/api/scans").then((r) => r.json()),
+    page.getByRole("tab", { name: "JavaScript și rețea" }),
+  ).toBeVisible({ timeout: 90000 });
+  const storeId = page.url().match(/\/s\/([0-9a-f-]{36})/)![1];
+  const scans = await page.evaluate(
+    (id) => fetch(`/api/stores/${id}/scans`).then((r) => r.json()),
+    storeId,
   );
-  const o = scans[0]?.report?.observation;
+  const full = await page.evaluate(
+    (id) => fetch(`/api/scans/${id}`).then((r) => r.json()),
+    scans[0].id,
+  );
+  const d = full.report?.diagnostics;
   // Surfaced as a CI annotation so the real-page result is visible without logs.
   console.log(
-    `::notice title=Pagina reala::preview=${sawPreview} verdict=${scans[0]?.report?.verdict} samples=${o?.samples?.length} usableMs=${o?.usableMs} http=${o?.httpStatus} analysisError=${o?.analysisError} rules=${scans[0]?.report?.rules?.map((r: { status: string }) => r.status).join(",")}`,
+    `::notice title=Pagina reala::preview=${sawPreview} verdict=${full.report?.verdict} findings=${d?.findings.length} ` +
+      `features=${d?.features.map((f: { id: string; status: string }) => `${f.id}:${f.status}`).join(",")} ` +
+      `lcp=${d?.metrics.lcp.value} cls=${d?.metrics.cls.value} fcp=${d?.metrics.fcp.value} ttfb=${d?.metrics.ttfb.value} ` +
+      `requests=${d?.counts.requests} failed=${d?.counts.failedRequests} js=${d?.counts.jsErrors} thirdParties=${d?.thirdParties.length} ` +
+      `titles=${d?.findings.map((f: { feature: string; title: string; count: number }) => `${f.feature}|${f.title}|x${f.count}`).join(" ; ")}`,
   );
   await page.waitForTimeout(800);
   await page.screenshot({
-    path: "test-results/screens/11-report-real.png",
+    path: "test-results/screens/11-diagnostic-overview.png",
     fullPage: true,
   });
-  await page.getByRole("button", { name: "Audit PDP" }).first().click();
+  await page.getByRole("tab", { name: "JavaScript și rețea" }).click();
+  await page.screenshot({
+    path: "test-results/screens/12-diagnostic-network.png",
+    fullPage: true,
+  });
+  await page.getByRole("tab", { name: "Încărcare și performanță" }).click();
+  await page.screenshot({
+    path: "test-results/screens/13-diagnostic-performance.png",
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: "PDP – Pagina de produs" }).click();
   await page.waitForTimeout(800);
   await page.screenshot({
-    path: "test-results/screens/12-overview-data.png",
-    fullPage: true,
-  });
-  await page.getByRole("tab", { name: /Pagini/ }).click();
-  await page.waitForTimeout(500);
-  await page.screenshot({
-    path: "test-results/screens/13-module-pages.png",
+    path: "test-results/screens/14-store-dashboard.png",
     fullPage: true,
   });
 });

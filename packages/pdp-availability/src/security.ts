@@ -44,7 +44,8 @@ export type Resolver = (
 ) => Promise<{ address: string; family: number }[]>;
 export class NetworkPolicy {
   constructor(
-    private readonly fixtureOrigin?: string,
+    /** Test-only allowance for controlled local servers; never exposed through the API. */
+    private readonly fixtureOrigin?: string | string[],
     private readonly resolver: Resolver = (host) =>
       lookup(host, { all: true, verbatim: true }),
   ) {}
@@ -61,7 +62,8 @@ export class NetworkPolicy {
         "Sunt permise doar adrese HTTP/HTTPS fără credențiale.",
       );
     const fixture =
-      this.fixtureOrigin !== undefined && url.origin === this.fixtureOrigin;
+      this.fixtureOrigin !== undefined &&
+      [this.fixtureOrigin].flat().includes(url.origin);
     if (!fixture && url.port && url.port !== "80" && url.port !== "443")
       throw new SecurityError(
         "Sunt permise numai porturile HTTP/HTTPS standard.",
